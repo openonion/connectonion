@@ -22,9 +22,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .files import CATEGORIES, MAP_DAYS, Notebook, RemError, read_json, state_path
+from .reader_template import ReaderTemplatePath
 from .service import run_logs, seen_outcome, status, subscriptions
 
-TEMPLATE = Path(__file__).with_name("reader.html")
+TEMPLATE: Path = ReaderTemplatePath(Path(__file__).with_name("reader.html"))
 PLACEHOLDER = "/*__REM_DATA__*/null"
 # The graph's layout and zoom, pinned and inlined so the page never fetches a script.
 D3 = Path(__file__).with_name("vendor") / "d3-7.9.0.min.js"

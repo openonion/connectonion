@@ -1,9 +1,8 @@
 """The whole network is always the knowledge graph (owner, 2026-11-19, #3140): a reader string never says
 图谱 without 知识, nor "graph" without "knowledge". A point in it is a 标签 / tag; its page a 标签页 / tag page."""
 import re
-from pathlib import Path
 
-READER = Path(__file__).resolve().parents[2] / "connectonion" / "rem" / "reader.html"
+from connectonion.rem.reader import TEMPLATE as READER
 
 
 def _pairs():

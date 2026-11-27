@@ -1,0 +1,408 @@
+  /* A link you tap is at least 44px tall (WCAG 2.5.5), however quiet it looks. */
+  .brief-more { display: inline-flex; align-items: center; min-height: 44px; color: var(--grey); text-underline-offset: 3px; }
+  .brief-header, .today-brief { font-family: var(--font); max-width: 760px; }
+  /* The one thing a page is about takes the display size: Today's count here, an entity's name on its page. */
+  /* Before the first pass the page is about the map ("N records mapped"), not a count: the headline steps down so the next step stays on the first screen. */
+  .brief-header .late, .qage.late { color: var(--red); font-weight: var(--w-bold); }
+  .today-brief .today-threads { display: block; border-top: 1.5px solid var(--ink); }
+  .today-brief .qcard { display: block; position: relative; padding: 16px 8px 16px 0; border: 0; border-bottom: 1px solid var(--rule); border-radius: var(--radius); background: none; cursor: pointer;
+    animation: today-rise var(--t-state) var(--ease-out) backwards; transition: transform var(--t-state) var(--ease-out), opacity var(--t-state) var(--ease-out); }
+  /* backwards, not both: a rise that keeps filling holds a transform on the card, which traps the phone's fixed
+     Send bar inside the card, over its last rows, instead of at the bottom of the screen. */
+  .today-brief .qcard:nth-child(2) { animation-delay: calc(var(--t-stagger) * 0.3); } .today-brief .qcard:nth-child(3) { animation-delay: calc(var(--t-stagger) * 0.6); }
+  .today-brief .qcard:nth-child(4) { animation-delay: calc(var(--t-stagger) * 0.9); } .today-brief .qcard:nth-child(n+5) { animation-delay: calc(var(--t-stagger) * 1.2); }
+  .today-brief .qcard.open { cursor: auto; }
+  .today-brief .qcard:focus-visible { outline: 0; background: var(--rule); }
+  .today-brief .qcard.leaving, .today-brief .qitem.leaving { transform: translateX(64px); opacity: 0; }
+  .qhead { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+  .qmark { flex: none; width: 8px; height: 8px; border-radius: var(--round); background: var(--ink); transform: translateY(-1px); }
+  .qmark.org { border-radius: var(--radius); }
+  .today-brief .today-who { font: var(--w-bold) var(--s-body)/22px var(--font); color: var(--ink); text-decoration: none; white-space: nowrap; }
+  .qhead .meta { flex: 1; min-width: 0; font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .qage { margin-left: auto; flex: none; font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); white-space: nowrap; }
+  .qitems { list-style: none; margin: 0; padding: 0 0 0 18px; }
+  .qitem { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 32px; column-gap: 8px; transition: transform var(--t-state) var(--ease-out), opacity var(--t-state) var(--ease-out); }
+  .qitem .words { grid-column: 1; margin: 4px 0 0; font: var(--w-regular) var(--s-body)/22px var(--font); color: var(--ink); }
+  .qcard:not(.open) .qitem .words { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .qcard:not(.open) .qitem .words sup, .qcard:not(.open) .qitem .words .cite { display: none; }
+  .today-threads > .qcard:first-child.open .qitem:first-child .words { font-size: var(--s-body); line-height: 27px; }
+  .qitem .words .cite { font-size: var(--s-ui); }
+  .qmore { grid-column: 1; display: none; font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); }
+  .qcard.open .qmore { display: block; }
+  .qmore > * { margin: 4px 0 0; font: inherit; color: inherit; }
+  .qcard .kind-badge { margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit; }
+  .qcard .kind-badge.mail::before { content: none; }
+  .qcard .blocker-tag { margin-left: 6px; color: var(--red); font-weight: var(--w-bold); }
+  .qdraft { display: none; margin: 12px 0 0 18px; }
+  .qcard.open .qdraft { display: block; }
+  .qdraft > .quiet-line { margin: 0 0 8px; font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); }
+  .card-acts { display: none; align-items: center; flex-wrap: wrap; gap: 4px 16px; margin: 12px 0 0 18px; }
+  .qcard.open .card-acts, .qcard:hover .card-acts, .qcard:focus-within .card-acts, .qcard:focus .card-acts { display: flex; animation: today-slide var(--t-press) var(--ease-out) both; }
+  .qcard.open .review-reply, .qcard.open .qdraft ~ .card-acts .review-reply { display: none; }
+  .card-acts .btn-act, .card-acts .btn-line { min-height: 40px; padding: 0 18px; border-radius: var(--radius); font: var(--w-bold) var(--s-body) var(--font); text-decoration: none; cursor: pointer; display: inline-flex; align-items: center; }
+  .card-acts .btn-line { border: 1px solid var(--grey); background: none; color: var(--ink) !important; }
+  .card-acts .btn-line:hover { border-color: var(--ink); }
+  .card-acts .btn-quiet { min-height: 0; padding: 0; font: var(--w-regular) var(--s-body)/22px var(--font); color: var(--grey); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
+  .card-acts .draft-now { display: inline-flex; align-items: center; gap: 12px; }
+  /* Today as a fuse (D-108). The poster: the count at the display size, its words and the most urgent
+     person beside it at the head size; the date and the quiet links sit on one kicker line above. */
+  .brief-header .poster .count { grid-column: 1; grid-row: 2 / 4; align-self: end; margin: var(--u3) 0 0; font-weight: var(--w-bold); font-size: var(--s-display);
+    line-height: var(--lh-tight); letter-spacing: var(--track-display); font-variant-numeric: tabular-nums; animation: today-rise var(--t-draw) var(--ease-out) both; }
+  @keyframes count-tick { from { opacity: 0; transform: translateY(-0.25em); } }
+
+  /* The draft, open in place: To, CC, Subject; REM's question as a row of choices; Send stays in reach. */
+  .owner-slot.choose { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u2) var(--u4); margin: var(--u2) 0; padding: var(--u2) 0; border: 0;
+    border-top: var(--hair) dashed var(--pencil); border-bottom: var(--hair) dashed var(--pencil); background: none; white-space: normal; }
+  .owner-slot.choose .k { color: var(--grey); }
+  .owner-slot.choose button { min-height: 32px; padding: 0 0 var(--u1); border: 0; border-bottom: var(--rule-heavy) solid var(--rule); background: none; color: var(--ink); font: inherit; cursor: pointer; transition: border-color var(--t-press) var(--ease-out); }
+  .owner-slot.choose button:hover, .owner-slot.choose button[aria-pressed="true"] { border-bottom-color: var(--ink); }
+  .owner-slot.choose button[aria-pressed="true"] { font-weight: var(--w-bold); }
+  .owner-slot.choose input { flex: 1 1 12em; min-width: 0; padding: var(--u1) 0; border: 0; border-bottom: var(--rule-heavy) solid var(--rule); background: none; color: var(--ink); font: inherit; }
+  .owner-slot.choose input:focus { outline: 0; border-bottom-color: var(--ink); }
+  /* With a draft open the card is compact, so Send sits in normal flow on the first screen: the context is
+     two lines with More, and the English original waits behind More too. */
+  /* align-self: start, or the 32px done button stretches the row and the clamped second line shows under the first. */
+  .qcard.focal[data-step="send"]:not(.full) .qitem .words { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; align-self: start; }
+  .qcard.focal[data-step="send"]:not(.full) .qitem .qorig { display: none; }
+  /* The letter and its reading scroll inside a short window, so a long letter never pushes Send off the first
+     screen and REM's question stays reachable in place; More or Write full screen shows it whole. */
+  /* The window is the top margin and three whole lines of the letter, which is four lines of the gist beside
+     it (16 and 12 at the same 1.6), so neither column shows a half line cut by the slot row under it. */
+  /* The letter is read whole (#3312 B4): no inner scroll window cutting mid-sentence; see .mail-body.long. */
+  .qcard.focal[data-step="send"]:not(.full) :is(.mail-text, .mail-gist) { padding-top: var(--u3); line-height: var(--lh-body); }
+  .qcard.focal[data-step="send"]:not(.full) .mail-gist .k { margin-bottom: 0; }
+  .qcard.focal.open .mail-head .mail-row { line-height: 1.35; }
+  .mail-gist .mail-why { margin: var(--u3) 0 0; padding: 0; border: 0; }
+  .mail-choices { padding: 0 var(--u3); border-top: var(--hair) solid var(--rule); background: var(--paper); }
+  .mail-choices .owner-slot.choose { margin: 0; border-top: 0; }
+  .mail-choices .owner-slot.choose + .owner-slot.choose { border-top: var(--hair) dashed var(--pencil); }
+  .slot-ref { color: var(--grey); border-bottom: var(--hair) dashed var(--pencil); }
+  .choose-hint { font-size: var(--s-meta); color: var(--grey); }
+  .choose-hint[hidden] { display: none; }
+  .choose-hint .slot-jump { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+  .qcard .qkind { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u1) var(--u4); }
+  .qcard .qkind .handoff { margin: 0; }
+  .qcard .qkind .handoff .btn-quiet { min-height: 28px; }
+  .today-brief .qcard.focal.open { padding-top: var(--u2); }
+  .qcard.focal.open .qdraft { margin-top: var(--u2); }
+  @media (min-width: 721px) {
+    .qcard.focal.open .mail-head { position: relative; }
+    .qcard.focal.open .mail-head .mail-channels { position: absolute; top: var(--u2); right: var(--u3); margin: 0; }
+    .qcard.focal.open .mail-head .mail-row:nth-child(2) .v { padding-right: 14rem; }
+  }
+  .qcard .qfull { display: none; }
+  .qcard.focal.open .qfull { display: inline-flex; min-height: 32px; margin: 0; padding: 0; border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-meta) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; cursor: pointer; }
+  .btn-act:disabled, .btn-act:disabled:hover, .btn-act[aria-disabled="true"], .btn-act[aria-disabled="true"]:hover { background: var(--rule); color: var(--grey) !important; cursor: default; }
+  .snapshot-line, .lead-why, .close-why { margin: 0 0 var(--u1); font-size: var(--s-meta); color: var(--grey); }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .qsent { padding: var(--u3) 0; border-bottom: var(--hair) solid var(--rule); animation: today-rise var(--t-state) var(--ease-out) both; }
+  .qsent .lede { margin: 0; font-size: var(--s-head); line-height: var(--lh-tight); color: var(--ink); }
+  .qsent .meta { margin: var(--u2) 0 0; font-size: var(--s-meta); color: var(--grey); }
+  .qsent .btn-quiet { min-height: 0; font-size: var(--s-meta); }
+
+  /* 交给 Codex / 交给 Claude: two quiet text buttons on every pending row, never green. */
+  .handoff { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u1) var(--u4); margin-top: var(--u2); }
+  /* 有更新: a draft held a redraw back; quiet, fixed, so nothing moves under the cursor. */
+  .updates-waiting { position: fixed; right: 16px; bottom: 16px; z-index: 5; min-height: 32px; padding: 0 12px; border: 1px solid var(--rule); border-radius: var(--round); background: var(--paper); color: var(--grey); font: var(--w-regular) var(--s-meta) var(--font); cursor: pointer; }
+  .updates-waiting:hover { color: var(--ink); }
+  .handoff .btn-quiet { min-height: 32px; padding: 0; border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-body) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; cursor: pointer; }
+  .handoff .btn-quiet:hover:not(:disabled) { color: var(--ink); text-decoration-color: var(--ink); }
+  .handoff .btn-quiet:disabled { cursor: default; text-decoration: none; }
+  .handoff-status, .handed { font-size: var(--s-ui); color: var(--grey); }
+  .handed { margin: var(--u2) 0 0; color: var(--ink); font-weight: var(--w-bold); }
+  .handoff-status:empty { display: none; }
+  .handoff { flex-direction: column; align-items: stretch; gap: var(--u1); }
+  .handoff-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--u1) var(--u2); }
+  .handoff-line > .sep { color: var(--grey); }
+  /* Hidden but keeping its width, so hiding it never reflows the row back onto one line. */
+  .sep.sep-wrap { visibility: hidden; }
+  .talk-menu { position: relative; }
+  .talk-menu > summary { list-style: none; min-height: 32px; display: inline-flex; align-items: center; color: var(--grey); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; cursor: pointer; }
+  .talk-menu > summary::-webkit-details-marker { display: none; }
+  .talk-menu > summary:hover, .talk-menu[open] > summary { color: var(--ink); text-decoration-color: var(--ink); }
+  .talk-choices { position: absolute; z-index: 5; top: 100%; left: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--u1); min-width: 10em; padding: var(--u2) var(--u3); background: var(--paper); border: var(--hair) solid var(--ink); }
+  .handoff .handed { margin: 0; font-size: var(--s-body); }
+  .talk-context pre { margin: 0; max-height: 480px; overflow: auto; padding: var(--u3); border: var(--hair) solid var(--rule); background: var(--paper); color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; font: var(--s-meta)/1.6 var(--mono); }
+  .task-output { flex-basis: 100%; max-height: 480px; overflow: auto; padding: var(--u3); border: var(--hair) solid var(--rule); background: var(--paper); color: var(--ink); }
+  /* An agent's Markdown, in the page's own type: paragraphs, lists, inline code and code blocks. */
+  .agent-text { min-width: 0; overflow-wrap: anywhere; line-height: var(--lh-body); }
+  .agent-text > :first-child { margin-top: var(--u1); }
+  .agent-text > :last-child { margin-bottom: 0; }
+  .agent-text p, .agent-text ul, .agent-text ol, .agent-text blockquote { margin: 0 0 var(--u2); }
+  .agent-text ul, .agent-text ol { padding-left: var(--u4); }
+  .agent-text h2, .agent-text h3, .agent-text h4, .agent-text h5, .agent-text h6 { margin: var(--u3) 0 var(--u2); font-size: var(--s-body); font-weight: var(--w-bold); }
+  .agent-text code { font: var(--s-ui) var(--mono); }
+  .agent-text .code-block { margin: 0 0 var(--u2); }
+  .agent-text pre { margin: 0; padding: var(--u3); overflow-x: auto; border: var(--hair) solid var(--rule); background: var(--paper); color: var(--ink); font: var(--s-ui)/var(--lh-body) var(--mono); }
+  .agent-text pre code { white-space: pre; overflow-wrap: normal; }
+  .agent-text a { text-decoration: underline; text-underline-offset: 3px; }
+  .task-output[hidden] { display: none; }
+  /* 和 Codex 聊这件事: the conversation under its row, in the reader's own type; quiet until it speaks. */
+  .talk { margin-top: var(--u2); padding: var(--u3); border: var(--hair) solid var(--rule); background: var(--paper); }
+  .talk-turns { display: flex; flex-direction: column; gap: var(--u3); }
+  .talk-turn.owner p { margin: var(--u1) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: var(--lh-body); }
+  .talk-turn.owner { padding-left: var(--u3); border-left: var(--rule-heavy) solid var(--ink); }
+  .talk-who, .talk-context summary, .talk-status { font-size: var(--s-meta); color: var(--grey); }
+  .talk-who { font-weight: var(--w-bold); }
+  .talk-context summary { cursor: pointer; min-height: 32px; }
+  .talk-status { margin: var(--u3) 0 var(--u2); }
+  .talk-status:empty { display: none; }
+  .talk-form { display: flex; gap: var(--u2); align-items: flex-end; margin-top: var(--u2); }
+  .talk-form textarea { flex: 1; min-width: 0; min-height: 64px; padding: var(--u2); border: var(--hair) solid var(--rule); background: var(--paper); color: var(--ink); font: var(--s-body)/1.6 var(--font); resize: vertical; }
+  .talk-form textarea:focus { outline: var(--rule-heavy) solid var(--ink); outline-offset: -2px; }
+  .session-composer .talk { margin: 0; border: 0; padding: 0; }
+  .talk-form .btn-line, .session-composer > .btn-line { min-height: 40px; padding: 0 18px; border: var(--hair) solid var(--grey); background: none; color: var(--ink); font: var(--w-bold) var(--s-body) var(--font); cursor: pointer; }
+  .talk-form .btn-line:hover:not(:disabled), .session-composer > .btn-line:hover { border-color: var(--ink); }
+  .talk-form .btn-line:disabled { color: var(--grey); border-color: var(--rule); cursor: default; }
+  @media (max-width: 720px) {
+    /* The first phone screen holds To, Subject, the letter's first lines and Send; the context line and channel
+       switch wait behind More. */
+    .qcard.focal[data-step="send"]:not(.full) .mailcard { display: flex; flex-direction: column; }
+    /* The phone reads in the card's order (#3312 B): who → the letter (its first eight lines, no two-line clamp) →
+       the dock with REM's question and Send → status → why → what REM did. */
+    .qcard.focal[data-step="send"]:not(.full) .mail-body { order: 1; }
+    .qcard.focal[data-step="send"]:not(.full) .mail-text { max-height: none; -webkit-mask-image: none; mask-image: none; }
+    .qcard.focal[data-step="send"]:not(.full) .mail-dock { order: 2; }
+    .qcard.focal[data-step="send"]:not(.full) .mail-status { order: 3; }
+    .qcard.focal[data-step="send"]:not(.full) .mail-why { order: 4; }
+    .qcard.focal[data-step="send"]:not(.full) .mail-did { order: 5; }
+    .qcard.focal[data-step="send"]:not(.full) .mail-head .mail-channels,
+    .qcard.focal[data-step="send"]:not(.full) .qitem .words { display: none; }
+    .qcard.focal[data-step="send"]:not(.full) .qitem { grid-template-columns: minmax(0, 1fr); }
+    /* The reply's needed parts and Send fit the first screen: the items behind the reply, their meta and hand-off
+       lines wait behind More, which stays in place of the first item. */
+    .qcard.focal[data-step="send"]:not(.full) :is(.qitem + .qitem, .qmore > :not(.qkind), .qkind > :not(.qfull, .handoff)) { display: none; }
+    /* Send sits where the draft ends, right under REM's question, in the dock. It is not pinned (sprint 13: a bar
+       fixed over the draft's first lines covered what it asked him to approve); a scroll to it stops above the tab
+       bar instead (#3312 H, html scroll-padding-bottom). */
+    .qcard.focal.open .mail-actions { padding: var(--u2) var(--u3) var(--u3); }
+    .qcard.open .mail-actions .btn-act { flex: 1 1 auto; }
+    /* One row above the thumb: Send, full screen, Skip. Editing in the provider's drafts waits for a desk. */
+    /* Buttons keep their words whole ("Skip", not "Ski / p"); a hint waiting on REM's question takes its own
+       line above them instead of squeezing them. */
+    .qcard.open .mail-actions > button { flex-shrink: 0; white-space: nowrap; }
+    /* Full screen is a thumb's height like Send beside it, so the row's buttons share one top. */
+    .qcard.open .mail-actions > .mail-write { min-height: 44px; }
+    .qcard.open .mail-actions > .choose-hint { order: -1; flex-basis: 100%; }
+    .qcard.open .mail-actions .mail-note, .qcard.open .mail-actions .edit-provider { display: none; }
+    .handoff .btn-quiet, .stale .stale-acts .btn-quiet { min-height: 44px; }
+  }
+  @keyframes today-rise { from { opacity: 0; transform: translateY(14px); } }
+  @keyframes today-slide { from { opacity: 0; transform: translateX(12px); } }
+  @media (max-width: 720px) {
+    .qhead .meta { display: none; }
+    .qitem { grid-template-columns: minmax(0, 1fr) 44px; }
+    .qcard:hover:not(.open) .card-acts { display: none; }
+    .card-acts .btn-act, .card-acts .btn-line { min-height: 46px; flex: 1 1 100%; justify-content: center; }
+  }
+  /* The command palette and the shortcut sheet: one transient layer, a sheet on a phone. */
+  dialog.palette { box-sizing: border-box; width: min(640px, calc(100vw - 32px)); margin: 12vh auto auto; padding: 0; border: 1px solid var(--rule); border-radius: var(--radius);
+    background: var(--paper); color: var(--ink); font-family: var(--font); animation: today-rise var(--t-press) var(--ease-out) both; }
+  dialog.palette::backdrop { background: var(--veil); }
+  .palette input { box-sizing: border-box; width: 100%; padding: 18px 20px; border: 0; border-bottom: 1px solid var(--rule); background: none; color: var(--ink); font: var(--w-regular) var(--s-body)/27px var(--font); outline: none; }
+  .palette ul { list-style: none; margin: 0; padding: 6px; max-height: min(52vh, 480px); overflow: auto; }
+  .palette li[role="option"] { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 10px 12px; border-left: 2px solid transparent; border-radius: var(--radius); font: var(--w-regular) var(--s-body)/22px var(--font); cursor: pointer; }
+  .palette li[aria-selected="true"] { background: var(--viridian-wash); border-left-color: var(--viridian); }
+  .palette .pl { min-width: 0; border-top: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .palette .ph, .palette-empty, .palette-foot { flex: none; font: var(--w-regular) var(--s-meta)/18px var(--font); color: var(--grey); }
+  .palette-empty { padding: 10px 12px; }
+  .palette-foot { margin: 0; padding: 10px 20px; border-top: 1px solid var(--rule); }
+  .shortcuts { padding: 20px 24px !important; width: min(380px, calc(100vw - 32px)) !important; }
+  .shortcuts h2 { margin: 0 0 12px; font: var(--w-bold) var(--s-body)/27px var(--font); }
+  .shortcuts dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 0 0 12px; font: var(--w-regular) var(--s-body)/22px var(--font); }
+  .shortcuts dt, .shortcuts dd { margin: 0; }
+  .shortcuts kbd { padding: 1px 6px; border: 1px solid var(--rule); border-radius: var(--radius); }
+  @media (max-width: 720px) {
+    dialog.palette { width: 100%; max-width: 100%; inset: auto 0 0 0; margin: 0; border-radius: var(--radius); max-height: 85vh; max-height: 85dvh; }
+    .palette ul { max-height: 60vh; }
+    .palette li[role="option"] { min-height: 44px; align-items: center; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .brief-header h1, .brief-header .lede, .brief-header .count, .fuse .seg, .qsent, .today-brief .qcard, .card-acts, dialog.palette { animation: none !important; }
+    .today-brief .qcard, .qitem { transition: none; }
+  }
+  /* The to-do list (todoSection) keeps the row styles the day plan shared with it. */
+  .day-plan { max-width: 760px; margin: 0 0 32px; overflow-wrap: anywhere; }
+  .day-plan h2 { margin: 0 0 12px; }
+  .day-plan h3 { margin: 20px 0 8px; font-size: var(--s-body); }
+  .day-plan-list { list-style: none; padding: 0; margin: 12px 0; }
+  .day-plan-item { padding: 12px 0; border-bottom: 1px solid var(--rule); }
+  .day-plan-item p { margin: 4px 0 0; }
+  .day-plan-item a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+  .day-plan-when { font-weight: var(--w-bold); }
+  .todo-list-name, .todo-note { color: var(--grey); font-size: var(--s-meta); }
+  .day-plan-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  /* Agenda (#2998), drawn as a calendar (owner, 2026-11-17): a week is a time grid, a month a grid of weeks.
+     Neutral: paper, hairlines, ink. Today is the one inked numeral; a weekend is a shade quieter. */
+  .agenda { color: var(--ink); font: var(--w-regular) var(--s-ui)/18px var(--font); font-feature-settings: "tnum" 1; }
+  .agenda a, .agenda a:hover { color: inherit; text-decoration: none; }
+  main:has(> .agenda) { padding-bottom: 16px; }
+  .agenda-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; }
+  .agenda-bar button { font: var(--s-ui) var(--font); color: var(--ink); background: var(--paper); border: var(--hair) solid var(--rule); border-radius: var(--radius); min-height: 32px; padding: 4px 12px; cursor: pointer; }
+  .agenda-bar .ag-step { min-width: 32px; padding: 4px 8px; }
+  .agenda-bar .ag-views button { display: inline-flex; align-items: center; justify-content: center; }
+  .agenda-bar .ag-views button[aria-pressed="true"] { box-shadow: var(--e-ink); }
+  .agenda-bar .ag-views { margin-left: auto; }
+  .ag-range { font: var(--w-bold) var(--s-body)/22px var(--font); margin-left: 6px; }
+  .ag-source { font-size: var(--s-meta); color: var(--grey); margin-left: 12px; }
+  .agenda-note { margin: 0 0 10px; font-size: var(--s-meta); line-height: 16px; color: var(--grey); }
+  .agenda button { font: inherit; color: inherit; }
+
+  /* the week: heads, the all-day strip, then the hours scrolling under them; one grid of an axis and seven days */
+  .cal-week { border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
+  .cal-heads, .cal-allday, .cal-grid { display: grid; grid-template-columns: 72px repeat(7, minmax(0, 1fr)); }
+  .cal-head { display: flex; align-items: baseline; gap: 6px; padding: 8px 8px 6px; border-left: var(--hair) solid var(--rule); min-width: 0; white-space: nowrap; }
+  .cal-wd { color: var(--grey); font-size: var(--s-meta); }
+  .cal-num { font: var(--w-bold) var(--s-body)/24px var(--font); min-width: 24px; text-align: center; }
+  .today > .cal-num { background: var(--ink); color: var(--paper); border-radius: var(--r-pill); padding: 0 6px; }
+  .cal-today-word { order: 3; font: var(--w-bold) var(--s-ui)/var(--lh-head) var(--font); }
+  .cal-head.sel { background: var(--viridian-wash); border-top: 2px solid var(--viridian); }
+  .cal-cell.sel { box-shadow: var(--e-ring); }
+  .cal-wx { order: 4; margin-left: auto; display: inline-flex; align-items: center; gap: 4px; color: var(--grey); font: var(--w-regular) var(--s-meta)/var(--lh-ui) var(--font); white-space: nowrap; }
+  .cal-wx-ic { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .cal-wx-words { display: block; color: var(--grey); font-weight: var(--w-regular); font-size: var(--s-ui); }
+  .cal-detail .cal-wx-line { color: var(--grey); }
+  .cal-allday { border-top: var(--hair) solid var(--rule); border-bottom: var(--hair) solid var(--rule); grid-auto-rows: 24px; row-gap: 2px; padding: 3px 0; min-height: 32px; }
+  .cal-axis-word { grid-column: 1; grid-row: 1; align-self: center; padding-right: 8px; text-align: right; color: var(--grey); font-size: var(--s-meta); }
+  .cal-allday-col { border-left: var(--hair) solid var(--rule); margin: -3px 0; }
+  .weekend.cal-allday-col, .weekend.cal-day, .weekend.cal-cell { background: var(--well); }
+  .cal-bar { display: flex; align-items: center; min-width: 0; height: 22px; margin: 0 3px 0 4px; padding: 0 8px; border: 0; border-radius: var(--r-cell); background: var(--ink); color: var(--paper) !important; font: var(--w-bold) var(--s-meta)/22px var(--font) !important; cursor: pointer; text-align: left; position: relative; z-index: 1; }
+  /* A day's notebook dates, counted in words; the items themselves are Today's cards (#3188). */
+  .cal-due-count { align-self: center; min-width: 0; margin: 0 4px; overflow: hidden; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font);
+    white-space: nowrap; text-overflow: ellipsis; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; position: relative; z-index: 1; }
+  .cal-due-count.late { color: var(--red); }
+  /* A phone's day list: the day's deadlines as one quiet line in words, opening them in place (#3188 on a phone). */
+  .cal-due-line { display: flex; align-items: center; min-height: 44px; padding: 0 12px; border: 0; background: none; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font);
+    text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; cursor: pointer; text-align: left; }
+  .cal-due-line.late { color: var(--red); }
+  .cal-due-list:not([hidden]) { display: grid; gap: 4px; }
+  .cal-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-bar.cal-microsoft { background: var(--grey); }
+  .cal-bar.cal-due, .cal-bar.cal-page { background: var(--paper); color: var(--ink) !important; box-shadow: var(--e-ring); font-weight: var(--w-regular) !important; }
+  .cal-bar.late { color: var(--red) !important; }
+  .cal-bar.before { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 0; }
+  .cal-bar.after { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: 0; }
+  .cal-scroll { overflow-y: auto; overscroll-behavior: contain; }
+  .cal-scroll:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .cal-grid { position: relative; }
+  .cal-axis { position: relative; }
+  .cal-hour { position: absolute; right: 8px; transform: translateY(-50%); color: var(--grey); font-size: var(--s-meta); line-height: var(--lh-head); white-space: nowrap; }
+  .cal-hour[style="top:0px"] { transform: none; }
+  .cal-now-word { color: var(--ink); font-weight: var(--w-bold); right: 4px; }
+  .cal-rule { position: absolute; left: 72px; right: 0; border-top: var(--hair) solid var(--rule); pointer-events: none; }
+  .cal-rule.half { opacity: .45; }
+  .cal-day { position: relative; border-left: var(--hair) solid var(--rule); min-width: 0; }
+  .cal-now { position: absolute; left: -1px; right: 0; border-top: var(--rule-heavy) solid var(--ink); z-index: 2; pointer-events: none; }
+  .cal-now::before { content: ""; position: absolute; left: -4px; top: -5px; width: 8px; height: 8px; border-radius: var(--round); background: var(--ink); }
+  .cal-ev { position: absolute; z-index: 1; box-sizing: border-box; min-height: 0; display: flex; flex-direction: column; margin-left: 2px; padding: 2px 6px; overflow: hidden; border: 0; border-left: 3px solid var(--ink); border-radius: var(--r-cell); background: var(--rule); cursor: pointer; text-align: left; font: var(--w-regular) var(--s-meta)/15px var(--font) !important; }
+  .cal-ev.cal-microsoft { border-left-color: var(--grey); }
+  .cal-ev:hover, .cal-ev:focus-visible { box-shadow: var(--e-ink); outline: none; }
+  .cal-ev-title { font-weight: var(--w-bold); overflow: hidden; text-overflow: ellipsis; }
+  /* A long mail-quote title would wrap into a wall of lines filling the block; clamp a timed event's title
+     to two lines (the full text stays on its detail panel). .short and .cal-suggest keep their one nowrap line. */
+  .cal-ev:not(.short):not(.cal-suggest) .cal-ev-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; min-width: 0; }
+  .cal-ev.short .cal-ev-title { white-space: nowrap; }
+  .cal-ev-time, .cal-ev-where { color: var(--grey); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cal-ev.short .cal-ev-time, .cal-ev:not(.tall) .cal-ev-where { display: none; }
+
+  /* an event's detail: a small card beside it */
+  dialog.cal-detail:not(.n3-sheet) { position: fixed; margin: 0; width: 320px; padding: 16px 18px; border: 0; border-radius: var(--r-inner); background: var(--raised); color: var(--ink); box-shadow: var(--e3); z-index: 60; }
+  .cal-detail .sheet-head h2 { font: var(--w-bold) var(--s-body)/var(--lh-body) var(--font); letter-spacing: 0; }
+  .cal-detail p { margin: 4px 0 0; font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); }
+  .cal-detail .cal-where, .cal-detail .cal-source, .cal-detail .cal-who { color: var(--grey); }
+  .cal-detail .cal-who a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  /* Joining is the event's one action; the provider's page is a quiet link at the foot (#3135). */
+  .cal-detail .cal-join { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; margin: 12px 0 4px; padding: 0 18px; text-decoration: none; }
+  .cal-detail .cal-org { color: var(--grey); }
+  .cal-detail .cal-notes { margin-top: 12px; padding-top: 12px; border-top: var(--hair) solid var(--rule); color: var(--ink); white-space: pre-line; max-height: 40vh; overflow: auto; }
+  .cal-detail .cal-open { display: inline-block; margin-top: 12px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .cal-detail .cal-open:hover { color: var(--ink); }
+
+  /* the month: weekday names, then one grid a week; bars and lines sit in the rows under each date */
+  .cal-month { border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
+  .cal-wds { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .cal-wds .cal-wd { padding: 6px 10px; }
+  .cal-mweek { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: 30px 22px 22px 22px 20px; row-gap: 2px; border-top: var(--hair) solid var(--rule); padding-bottom: 4px; }
+  .cal-cell { grid-row: 1 / -1; margin-bottom: -4px; display: flex; align-items: baseline; gap: 6px; padding: 4px 8px; border-left: var(--hair) solid var(--rule); min-width: 0; cursor: default; }
+  .cal-cell:first-child { border-left: 0; }
+  .cal-cell.out > .cal-num { color: var(--grey); font-weight: var(--w-regular); }
+  .cal-cell > .cal-num { font-size: var(--s-ui); text-align: left; min-width: 0; }
+  .cal-cell.today > .cal-num { text-align: center; min-width: 24px; }
+  .cal-count { display: none; }
+  .cal-line { display: flex; gap: 6px; min-width: 0; height: 22px; margin: 0 4px; padding: 0 6px; border: 0; border-radius: var(--r-cell); background: none; cursor: pointer; text-align: left; font: var(--w-regular) var(--s-meta)/22px var(--font) !important; position: relative; z-index: 1; }
+  .cal-line:hover, .cal-more:hover { background: var(--rule); }
+  .cal-line-time { color: var(--grey); flex: none; }
+  .cal-line-title { font-weight: var(--w-bold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-more { grid-row: 5; justify-self: start; margin: 0 4px; padding: 0 6px; border: 0; border-radius: var(--r-cell); background: none; color: var(--grey) !important; cursor: pointer; font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font) !important; position: relative; z-index: 1; }
+  .cal-daylist, .cal-phone { display: none; }
+  /* Today's calendar (#3152): under the cards; a seven-day strip over the chosen day's hours. */
+  .today-cal { margin: 32px 0 40px; }
+  .tcal-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .tcal-head h2 { margin: 0; font: var(--w-bold) var(--s-body)/var(--lh-head) var(--font); }
+  .tcal-controls { display: flex; gap: 8px; margin-left: auto; }
+  /* #3163: 本月 is two characters, so on a phone its chip fell under the 44px target the rest of the page keeps. */
+  @media (max-width: 820px), (pointer: coarse) { .tcal-toggle { min-height: 44px; min-width: 44px; } }
+  .tcal-frame { border: var(--hair) solid var(--rule); border-radius: var(--r-inner); overflow: hidden; }
+  .tcal-frame .cal-week { border: 0; border-top: var(--hair) solid var(--rule); border-radius: 0; }
+  .tcal-week { overflow-x: auto; }
+  .tcal-strip, .tcal-week .cal-allday { min-width: 520px; }
+  .tcal-strip { display: grid; grid-template-columns: 72px repeat(7, minmax(56px, 1fr)); }
+  .today-cal .cal-jump { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 64px; padding: 6px 0; border: 0; border-left: var(--hair) solid var(--rule); background: none; color: var(--ink); cursor: pointer; font: inherit; }
+  .today-cal .cal-jump.weekend { background: var(--well); }
+  .today-cal .cal-jump.on { box-shadow: var(--e-ink); }
+  .today-cal .cal-jump .cal-wx { margin: 0; order: 0; }
+  .tcal-dots { min-height: 13px; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); letter-spacing: 2px; }
+  .tcal-week .cal-allday { grid-template-columns: 72px repeat(7, minmax(56px, 1fr)); border-bottom: 0; }
+  .tcal-day .cal-heads, .tcal-day .cal-allday, .tcal-day .cal-grid { grid-template-columns: 72px minmax(0, 1fr); }
+  .today-cal .cal-scroll { height: 440px; }
+  .today-cal.expanded .agenda-week .cal-scroll { height: 620px; }  /* 07:00 to 20:00 in view */
+  .tcal-suggest-box { position: absolute; left: 2px; right: 2px; z-index: 0; }
+  .cal-ev.cal-suggest { position: absolute; inset: 0; z-index: 0; margin: 0; border: 1.5px dashed var(--pencil); border-left-width: 1.5px; background: transparent; color: var(--grey); }
+  .cal-ev.cal-suggest .cal-ev-title { font-weight: var(--w-regular); color: var(--ink); white-space: nowrap; padding-right: 24px; }
+  .cal-ev.cal-suggest .cal-ev-time { display: none; }  /* the time is the block's place; the whole sentence is its title */
+  /* The strip above already carries the all-day bars; the day under it does not repeat them. */
+  .tcal-day .cal-allday { display: none; }
+  .tcal-drop { position: absolute; top: 2px; right: 4px; z-index: 1; width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--round); background: var(--paper); color: var(--grey); cursor: pointer; font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); }
+  .tcal-drop:hover { color: var(--ink); background: var(--well); }
+  .cal-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 0 12px; align-items: baseline; width: 100%; min-height: 44px; padding: 10px 12px; border: 0; border-left: 3px solid var(--ink); border-radius: var(--r-cell); background: var(--rule); cursor: pointer; text-align: left; }
+  .cal-row.cal-microsoft { border-left-color: var(--grey); }
+  .cal-row.cal-due, .cal-row.cal-page { background: var(--paper); box-shadow: var(--e-ring); border-left-color: var(--rule); }
+  .cal-row-bar.cal-event { grid-template-columns: minmax(0, 1fr); background: var(--ink); color: var(--paper) !important; border-left-color: var(--ink); }
+  .cal-row-bar.cal-event.cal-microsoft { background: var(--grey); border-left-color: var(--grey); }
+  .cal-row-bar.cal-event .cal-row-time { color: inherit; grid-row: 2; }
+  .cal-row-time { color: var(--grey); font-size: var(--s-ui); }
+  .cal-row.late .cal-row-time { color: var(--red); }
+  .cal-row-title { font: var(--w-bold) var(--s-body)/var(--lh-body) var(--font); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-width: 0; }
+  .cal-row-where { grid-column: 2; color: var(--grey); font-size: var(--s-ui); overflow-wrap: anywhere; }
+  .cal-row-bar.cal-event .cal-row-where { grid-column: 1; color: inherit; }
+  @media (max-width: 640px) {
+    /* a phone: the week is a strip of dates over a day-by-day list; the month keeps its grid with a count in each
+       cell and the chosen day's list under it */
+    .cal-week { display: none; }
+    /* Today's day timeline is one column: it stays a timeline on a phone; the strip scrolls sideways. */
+    .tcal-day .cal-week { display: block; }
+    .today-cal .cal-scroll { height: 380px; }
+    .tcal-head { flex-wrap: wrap; }
+    .agenda-bar { gap: 6px; }
+    .agenda-bar .ag-source { display: none; }
+    .agenda-bar button { min-height: 40px; }
+    .ag-range { flex: 1 1 100%; order: -1; margin-left: 0; }
+    .cal-phone, .cal-daylist { display: block; }
+    .cal-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; margin: 0 0 16px; }
+    .cal-jump { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 56px; padding: 6px 0; border: 0; border-radius: var(--radius); background: none; cursor: pointer; }
+    .cal-jump:disabled { cursor: default; }
+    .cal-jump:disabled .cal-num { color: var(--grey); font-weight: var(--w-regular); }
+    .cal-jump.weekend { background: var(--well); }
+    .agenda-days { display: flex; flex-direction: column; gap: 18px; }
+    .ag-day { display: flex; flex-direction: column; gap: 6px; scroll-margin-top: 8px; }
+    .ag-dayhead { margin: 0; font: var(--w-bold) var(--s-ui)/18px var(--font); }
+    .cal-month { border-radius: var(--radius); overflow: visible; border: 0; }
+    .cal-wds .cal-wd { padding: 4px 0; text-align: center; }
+    .cal-mweek { grid-template-rows: 52px; padding: 0; row-gap: 0; }
+    .cal-mweek > :not(.cal-cell) { display: none; }
+    .cal-cell { grid-row: 1; margin: 0; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; cursor: pointer; }
+    .cal-cell .cal-today-word, .cal-cell .cal-wx { display: none; }
+    .cal-jump .cal-wx { margin: 0; }
+    .cal-count { display: block; color: var(--grey); font-size: var(--s-meta); line-height: var(--lh-head); }
+    .cal-daylist { margin-top: 16px; }
+  }

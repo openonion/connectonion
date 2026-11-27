@@ -1,0 +1,389 @@
+  /* fuse:tokens */
+  /* REM · "Porcelain & Viridian" (#3470, D-123): the whole token sheet. Outside it the reader may only
+   name these (tests/unit/test_rem_reader_style_sheet.py). Cold Porcelain canvas (B >= G >= R, never warm cream),
+   Pure Obsidian instrument slabs (--night, zero purple mud), Lucid Viridian structural signal, and <=1% Rose-Pink
+   quiet lever (--red / --rose-bright). Built-in pluggable skins sit under [data-skin="..."]. */
+  :root {
+    color-scheme: light;
+    --canvas: #edf2f7; /* Cold Porcelain desk ground (B >= G >= R, never warm cream) */
+    --rail-bg: #f6f9fc; /* featherlight Cold Porcelain outer rail (B >= G >= R) */
+    --paper: #ffffff; /* crisp Cold Porcelain page sheet */
+    /* The 3D knowledge graph's kinds (#3309): every mark there is a sphere, so colour carries what shape does in 2D.
+       Four, desaturated, one lightness (OKLCH L .60); tag pages take the accent. Never a call to action. */
+    --kind-people: #4f7ea8;
+    --kind-orgs: #2a8a6c;
+    --kind-projects: #7b6b8e;
+    --kind-notes: #76848c;
+    --raised: #ffffff; /* cards and sheets */
+    --ink: #0d1315; /* pure Obsidian ink (18.7:1 on paper) */
+    --grey: #4f5e66; /* second cool slate ink (6.7:1 on paper, 5.4:1 on rule) */
+    --pencil: #8b99a1; /* REM's inference: dashed borders, never solid text */
+    --rule: #dae3ec; /* crisp Cold Porcelain grounded sheet hairlines and ring tracks */
+    --well: #eef3f8; /* cool porcelain insets: avatar discs, inputs, hover rows, segment tracks */
+    /* The one primary action per screen (#3144): pure Obsidian keycap on paper, inverting cleanly at night. */
+    --green: #0d1315;
+    --on-green: #ffffff;
+    --red: #d41e63; /* crisp Onion Rose-Pink (replaces harsh alarm red; >=4.6:1 on paper & well) */
+    --amber: #9a5200; /* warm amber personal privacy marker (distinct from rose-pink sensitive; >=5.2:1 on paper) */
+    /* Pure unmuddied Obsidian instrument surfaces (.night-card, execution dock, batch bar — zero purple mix) */
+    --night: #0d1315;
+    --night-2: #151e22;
+    --night-ink: #eef4f6;
+    --night-sub: #94a6ae;
+    --night-rule: #222e33;
+    /* Lucid Viridian structural signal & <=1% Rose-Pink dawn awakening pulse */
+    --viridian: #007a5a;
+    --viridian-bright: #00dc96;
+    --viridian-wash: #eaf8f3;
+    --rose-bright: #ff5492;
+    --scrim: rgba(237, 242, 247, .76); /* behind sheets */
+    /* Viridian activity heat (#3231): five steps mixed from viridian and paper, adapting automatically in dark mode. */
+    --heat-0: var(--well);
+    --heat-1: color-mix(in srgb, var(--viridian) 18%, var(--paper));
+    --heat-2: color-mix(in srgb, var(--viridian) 42%, var(--paper));
+    --heat-3: color-mix(in srgb, var(--viridian) 70%, var(--paper));
+    --heat-4: var(--viridian);
+    /* States are ink at an alpha on whatever surface they sit on (#3359): no one-off color-mix() in a rule, and
+       dark mode follows by itself because --ink and --paper flip. Hover 4 %, pressed 7 %. */
+    --fill-hover: color-mix(in srgb, var(--ink) 4%, transparent);
+    --fill-press: color-mix(in srgb, var(--ink) 7%, transparent);
+    --fill-chip: color-mix(in srgb, var(--well) 50%, var(--paper)); /* a tag chip: quieter than an inset */
+    --tint-red: color-mix(in srgb, var(--red) 10%, transparent); /* behind a slot REM needs answered or sensitive curtain */
+    --tint-amber: color-mix(in srgb, var(--amber) 11%, transparent); /* behind personal privacy marker */
+    --underline: color-mix(in srgb, currentColor 55%, transparent); /* a link's underline, softer than its text */
+    /* Behind the full-screen writer: black, never ink, because ink turns near-white in dark mode and the backdrop
+       became a pale fog instead of dimming the page. Darker in dark mode, where the page is already dark. */
+    --overlay: rgba(0, 0, 0, .36);
+    --mark-bg: color-mix(in srgb, var(--viridian-bright) 24%, var(--paper));
+    --veil: color-mix(in srgb, var(--paper) 74%, transparent); /* behind a palette or a side dialog */
+
+
+    /* type: seven sizes, two weights, one family (Latin-first + CJK); fonts are local on purpose */
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Liberation Sans", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif;
+    /* The scale is seven steps (docs/cli/rem-visual-system.md, #3096). 15 is the smallest size for a sentence
+       or a table cell, 13 the smallest for a label; 11 is a caption for axis ticks and badges only. */
+    --s-display: 44px; /* the single display element per screen: a count or a name */
+    --s-head: 24px; /* a card's subject, a widget's big number */
+    --s-title: 20px; /* a page's name, a section that leads a page */
+    --s-lead: 17px; /* the one sentence a page opens with */
+    --s-body: 15px; /* sentences, letters, quotes, table cells */
+    --s-ui: 13px; /* labels, chips, dates beside a row; the smallest size for running Chinese */
+    --s-meta: 11px; /* captions: axis ticks and badges, never a sentence or a table cell */
+    --mono: ui-monospace, "SF Mono", Menlo, monospace; /* code and paths only */
+    --w-regular: 400;
+    --w-bold: 600;
+    /* leading: five steps. Chinese has no descenders to borrow room from, so a paragraph reads at 1.7.
+       A knowledge entry, a decision and a principle read at --lh-read too (#3097): one reading leading, not two. */
+    --lh-tight: 1.05; /* display */
+    --lh-head: 1.25; /* titles and heads */
+    --lh-ui: 1.4; /* a label or a row of one line */
+    --lh-body: 1.55; /* sentences */
+    --lh-read: 1.7; /* a paragraph, and any running Chinese */
+    --track-display: -0.035em;
+
+    /* grid */
+    --measure: 720px;
+    --measure-read: 34em; /* a reading column: about 34 Chinese or 70 Latin characters */
+    --gap: 36px;
+    --rail: 280px;
+    --u1: 4px; --u2: 8px; --u3: 16px; --u4: 24px; --u5: 40px; --u6: 64px;
+
+    /* lines */
+    --hair: 1px;
+    --rule-heavy: 2px;
+    --fuse: 6px; /* the one heavy mark of the older fuse views (org timeline) */
+
+    /* shape: precision typewriter-atelier geometry (10px sheets, 6px keycaps, 4px rhythm cells; zero candy pills) */
+    --radius: 6px;
+    --r-card: 10px;
+    --r-inner: 6px;
+    --r-pill: 6px;
+    --round: 50%;
+    --r-org: 24%; /* an organisation is a crisp rounded square */
+    --r-cell: 3px; /* a day in the contact rhythm */
+
+    /* elevation: crisp zero-muddy-blur hairline borders + subtle tactile keycap step */
+    --e1: 0 0 0 1px rgba(13, 19, 21, .08), 0 1px 2px rgba(13, 19, 21, .04);
+    --e2: 0 0 0 1px rgba(13, 19, 21, .11), 0 8px 20px -8px rgba(13, 19, 21, .14);
+    --e3: 0 0 0 1px rgba(13, 19, 21, .12), 0 14px 32px -10px rgba(13, 19, 21, .20);
+    --e-ring: inset 0 0 0 1px var(--rule); /* an outlined chip or an inset panel */
+    --e-ink: inset 0 0 0 1.5px var(--ink); /* a chosen chip, a hovered control */
+    --e-fuse: inset 0 0 0 1.5px rgba(212, 30, 99, .28); /* an overdue rose-pink ring */
+    --e-green: 0 2px 0 rgba(13, 19, 21, .24); /* tactile typewriter keycap lift */
+
+    /* motion: it explains a change of state, never decorates */
+    --t-press: 150ms; /* hover, colour */
+    --t-state: 250ms; /* lift, menu pop, switch */
+    --t-draw: 500ms; /* a card or widget rises */
+    --t-stagger: 40ms;
+    --t-burn: 1100ms; /* a fuse ring burns in */
+    --t-ember: 1600ms; /* the most urgent fuse still glows */
+    --t-night: 2400ms; /* the night chart draws up to now */
+    --t-spin: 900ms; /* one turn of a spinner while the system is asked (the Keychain's 允许) */
+    --ease-out: cubic-bezier(.2, .7, .2, 1);
+    --ease-even: linear; /* a spinner turns at one speed */
+    --spring: linear(0, 0.076, 0.248, 0.449, 0.638, 0.795, 0.911, 0.989, 1.034, 1.054, 1.058, 1.052, 1.042, 1.03, 1.019, 1.01, 1.004, 1, 0.998, 0.997, 0.997, 0.997, 0.998, 0.998, 1);
+    --spring-soft: linear(0, 0.092, 0.26, 0.425, 0.564, 0.674, 0.758, 0.821, 0.868, 0.902, 0.928, 0.947, 0.961, 0.971, 0.979, 0.984, 0.988, 0.992, 0.994, 0.995, 0.997, 0.997, 0.998, 0.999, 1);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --canvas: #080c0e;
+      --rail-bg: #0b1013;
+      --paper: #0b0f11;
+      --kind-people: #83b2dc;
+      --kind-orgs: #6fd1ad;
+      --kind-projects: #b8a3cf;
+      --kind-notes: #a6b4bc;
+      --raised: #11181b;
+      --ink: #edf3f5;
+      --grey: #95a5ad;
+      --pencil: #65757d;
+      --rule: #232e33;
+      --well: #171f23;
+      --red: #ff5c97;
+      --amber: #f5b841;
+      --night: #06090b;
+      --night-2: #11181c;
+      --night-ink: #eef4f6;
+      --night-sub: #95a5ad;
+      --night-rule: #1f2b30;
+      --viridian: #00dc96;
+      --viridian-bright: #00dc96;
+      --viridian-wash: #102822;
+      --rose-bright: #ff5c97;
+      --e-fuse: inset 0 0 0 1.5px rgba(255, 92, 151, .34);
+      --scrim: rgba(11, 15, 17, .68);
+      --overlay: rgba(0, 0, 0, .58);
+      --e1: 0 0 0 1px rgba(255, 255, 255, .08), 0 2px 6px rgba(0, 0, 0, .5);
+      --e2: 0 0 0 1px rgba(255, 255, 255, .11), 0 12px 28px -8px rgba(0, 0, 0, .72);
+      --e3: 0 0 0 1px rgba(255, 255, 255, .13), 0 16px 36px -10px rgba(0, 0, 0, .78);
+      --green: #edf3f5;
+      --on-green: #0d1315;
+      --e-green: 0 2px 0 rgba(0, 0, 0, .65);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --canvas: #080c0e;
+    --rail-bg: #0b1013;
+    --paper: #0b0f11;
+    --kind-people: #83b2dc;
+    --kind-orgs: #6fd1ad;
+    --kind-projects: #b8a3cf;
+    --kind-notes: #a6b4bc;
+    --raised: #11181b;
+    --ink: #edf3f5;
+    --grey: #95a5ad;
+    --pencil: #65757d;
+    --rule: #232e33;
+    --well: #171f23;
+    --red: #ff5c97;
+    --amber: #f5b841;
+    --night: #06090b;
+    --night-2: #11181c;
+    --night-ink: #eef4f6;
+    --night-sub: #95a5ad;
+    --night-rule: #1f2b30;
+    --viridian: #00dc96;
+    --viridian-bright: #00dc96;
+    --viridian-wash: #102822;
+    --rose-bright: #ff5c97;
+    --e-fuse: inset 0 0 0 1.5px rgba(255, 92, 151, .34);
+    --scrim: rgba(11, 15, 17, .68);
+    --overlay: rgba(0, 0, 0, .58);
+    --e1: 0 0 0 1px rgba(255, 255, 255, .08), 0 2px 6px rgba(0, 0, 0, .5);
+    --e2: 0 0 0 1px rgba(255, 255, 255, .11), 0 12px 28px -8px rgba(0, 0, 0, .72);
+    --e3: 0 0 0 1px rgba(255, 255, 255, .13), 0 16px 36px -10px rgba(0, 0, 0, .78);
+    --green: #edf3f5;
+    --on-green: #0d1315;
+    --e-green: 0 2px 0 rgba(0, 0, 0, .65);
+  }
+
+  /* Pluggable Skin 2 (#3470): Klein Atelier — Cold Porcelain + Deep Ultramarine Night + Crisp Rose */
+  :root[data-skin="klein"] {
+    --canvas: #f2f5fa;
+    --well: #f2f5fa;
+    --rule: #e1e7f2;
+    --night: #0b2475;
+    --night-2: #103196;
+    --night-ink: #f4f7ff;
+    --night-sub: #b8c9ff;
+    --night-rule: #1e42b5;
+    --viridian: #0b35d9;
+    --viridian-bright: #85abff;
+    --viridian-wash: #edf2ff;
+    --rose-bright: #ff699e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root[data-skin="klein"]:not([data-theme="light"]) {
+      --canvas: #080c12;
+      --rail-bg: #0b1018;
+      --paper: #0b0f17;
+      --raised: #111722;
+      --ink: #edf2fa;
+      --grey: #96a4b8;
+      --pencil: #65748a;
+      --rule: #232f42;
+      --well: #161e2b;
+      --green: #edf2fa;
+      --on-green: #080c12;
+      --viridian: #85abff;
+      --viridian-bright: #85abff;
+      --viridian-wash: #111d3b;
+      --night: #08184f;
+      --night-2: #0f2573;
+      --night-rule: #1b3898;
+    }
+  }
+  :root[data-skin="klein"][data-theme="dark"] {
+    --canvas: #080c12;
+    --rail-bg: #0b1018;
+    --paper: #0b0f17;
+    --raised: #111722;
+    --ink: #edf2fa;
+    --grey: #96a4b8;
+    --pencil: #65748a;
+    --rule: #232f42;
+    --well: #161e2b;
+    --green: #edf2fa;
+    --on-green: #080c12;
+    --viridian: #85abff;
+    --viridian-bright: #85abff;
+    --viridian-wash: #111d3b;
+    --night: #08184f;
+    --night-2: #0f2573;
+    --night-rule: #1b3898;
+  }
+
+  /* Pluggable Skin 3 (#3470): Onion Bookcraft — Cold Bone Porcelain + Pure Obsidian + Crisp Onion Ruby */
+  :root[data-skin="onion"] {
+    --canvas: #f4f5f8;
+    --well: #f4f5f8;
+    --rule: #e3e6ec;
+    --night: #101216;
+    --night-2: #191d24;
+    --night-ink: #f2f4f8;
+    --night-sub: #9ba3b0;
+    --night-rule: #272c36;
+    --viridian: #9e1952;
+    --viridian-bright: #ff5c97;
+    --viridian-wash: #fdf0f5;
+    --rose-bright: #00dc96;
+    --radius: 3px;
+    --r-card: 4px;
+    --r-inner: 3px;
+    --r-pill: 3px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root[data-skin="onion"]:not([data-theme="light"]) {
+      --canvas: #0a0c10;
+      --rail-bg: #0d1015;
+      --paper: #0d1015;
+      --raised: #141820;
+      --ink: #eef1f6;
+      --grey: #9ca4b2;
+      --pencil: #6a7280;
+      --rule: #262d3b;
+      --well: #181d26;
+      --green: #eef1f6;
+      --on-green: #0a0c10;
+      --viridian: #ff5c97;
+      --viridian-bright: #ff5c97;
+      --viridian-wash: #29121d;
+      --rose-bright: #00dc96;
+    }
+  }
+  :root[data-skin="onion"][data-theme="dark"] {
+    --canvas: #0a0c10;
+    --rail-bg: #0d1015;
+    --paper: #0d1015;
+    --raised: #141820;
+    --ink: #eef1f6;
+    --grey: #9ca4b2;
+    --pencil: #6a7280;
+    --rule: #262d3b;
+    --well: #181d26;
+    --green: #eef1f6;
+    --on-green: #0a0c10;
+    --viridian: #ff5c97;
+    --viridian-bright: #ff5c97;
+    --viridian-wash: #29121d;
+    --rose-bright: #00dc96;
+  }
+
+  /* Pluggable Skin 4 (#3470): Classic Desk — Original N3 monochrome ink-on-paper */
+  :root[data-skin="classic"] {
+    --canvas: #ffffff;
+    --rail-bg: #ffffff;
+    --paper: #ffffff;
+    --raised: #ffffff;
+    --ink: #121512;
+    --grey: #636863;
+    --pencil: #a3a8a3;
+    --rule: #e8eae7;
+    --well: #f5f6f4;
+    --green: #121512;
+    --on-green: #ffffff;
+    --red: #c02a17;
+    --amber: #9a5200;
+    --night: #121512;
+    --night-2: #1d211d;
+    --night-ink: #eef0ed;
+    --night-sub: #9aa09a;
+    --night-rule: #2a2e2a;
+    --viridian: #121512;
+    --viridian-bright: #eef0ed;
+    --viridian-wash: #f5f6f4;
+    --rose-bright: #ff5a3c;
+    --radius: 12px;
+    --r-card: 22px;
+    --r-inner: 16px;
+    --r-pill: 999px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root[data-skin="classic"]:not([data-theme="light"]) {
+      --canvas: #0f110f;
+      --rail-bg: #0f110f;
+      --paper: #0f110f;
+      --raised: #181b18;
+      --ink: #eef0ed;
+      --grey: #9aa09a;
+      --pencil: #6b716b;
+      --rule: #2a2e2a;
+      --well: #20241f;
+      --green: #eef0ed;
+      --on-green: #121512;
+      --red: #ff5a3c;
+      --amber: #f5b841;
+      --viridian: #eef0ed;
+      --viridian-wash: #20241f;
+    }
+  }
+  :root[data-skin="classic"][data-theme="dark"] {
+    --canvas: #0f110f;
+    --rail-bg: #0f110f;
+    --paper: #0f110f;
+    --raised: #181b18;
+    --ink: #eef0ed;
+    --grey: #9aa09a;
+    --pencil: #6b716b;
+    --rule: #2a2e2a;
+    --well: #20241f;
+    --green: #eef0ed;
+    --on-green: #121512;
+    --red: #ff5a3c;
+    --amber: #f5b841;
+    --viridian: #eef0ed;
+    --viridian-wash: #20241f;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root { --t-press: 0ms; --t-state: 0ms; --t-draw: 0ms; --t-stagger: 0ms; --t-burn: 0ms; --t-ember: 0ms; --t-night: 0ms; --t-spin: 0ms; }
+  }
+  /* A phone's display element is 36. */
+  @media (max-width: 640px) { :root { --s-display: 36px; } }
+  /* 设置 ▸ 减少动态效果: the same stillness, chosen in the reader. */
+  :root.calm { --t-press: 0ms; --t-state: 0ms; --t-draw: 0ms; --t-stagger: 0ms; --t-burn: 0ms; --t-ember: 0ms; --t-night: 0ms; --t-spin: 0ms; }
+  /* /fuse:tokens */

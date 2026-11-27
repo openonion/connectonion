@@ -10,9 +10,9 @@ from pathlib import Path
 import pytest
 
 from connectonion.rem.queue import nightly_throughput
+from connectonion.rem.reader import TEMPLATE
 from tests.unit.test_rem_reader import _run_reader_js
 
-TEMPLATE = Path(__file__).parents[2] / "connectonion" / "rem" / "reader.html"
 SYDNEY = timezone(timedelta(hours=11))
 
 
