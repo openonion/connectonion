@@ -30,6 +30,7 @@ import gzip
 import hmac
 import json
 import re
+import time
 from urllib.parse import parse_qs, quote, urlsplit
 
 from ..asgi.http import read_body
@@ -41,6 +42,9 @@ SECURITY_HEADERS = [[b"cache-control", b"no-store"], [b"x-frame-options", b"DENY
                     [b"referrer-policy", b"no-referrer"], [b"x-content-type-options", b"nosniff"]]
 # One translation per (notebook, page, language) at a time; the Host runs one worker.
 TASKS: dict[tuple, asyncio.Task] = {}
+# Last monotonic timestamp an authenticated browser reader hit this Host per notebook root,
+# used to avoid opening duplicate tabs when the reader is already open (#3474).
+ACTIVE_READER_SEEN: dict[str, float] = {}
 
 
 async def _reply(send, status: int, body: str, kind: str = "text/plain", headers=(), *, accept_encoding=""):
@@ -168,6 +172,7 @@ async def handle_rem_http(scope, receive, send, routes):
         from ...rem.reader import cached_page
         # The saved page at once; a stale one is rebuilt by a detached process
         # and the open page reloads when /rem/version names a newer render.
+        ACTIVE_READER_SEEN[str(root)] = time.monotonic()
         name = "live.html" if scope["path"] == "/rem" else "data.json"
         page, _ = await asyncio.to_thread(cached_page, root, name)
         await _reply(send, 200, page, "text/html" if name == "live.html" else "application/json",
@@ -179,7 +184,14 @@ async def handle_rem_http(scope, receive, send, routes):
         await _reply(send, 200, await asyncio.to_thread(GRAPH_3D.read_text, encoding="utf-8"), "text/javascript")
     elif scope["method"] == "GET" and scope["path"] == "/rem/version":
         from ...rem.reader import latest
-        await _reply(send, 200, json.dumps(await asyncio.to_thread(latest, root)), "application/json")
+        now_m = time.monotonic()
+        last_seen = ACTIVE_READER_SEEN.get(str(root))
+        age_s = round(max(0.0, now_m - last_seen), 2) if last_seen is not None else None
+        query = parse_qs(scope.get("query_string", b"").decode("latin-1"))
+        if query.get("probe", [""])[0] != "1":
+            ACTIVE_READER_SEEN[str(root)] = now_m
+        payload = {**await asyncio.to_thread(latest, root), "active_reader_age_s": age_s}
+        await _reply(send, 200, json.dumps(payload), "application/json")
     elif scope["method"] == "GET" and scope["path"] == "/rem/query":
         await _query(scope, send, root)
     elif scope["method"] == "GET" and scope["path"] == "/rem/task-file":

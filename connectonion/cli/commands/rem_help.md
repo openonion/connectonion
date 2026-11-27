@@ -46,6 +46,7 @@ Background machinery
 Settings
   sources       Which mailboxes, coding tools and chats the notebook reads.
   config        Model, schedule times and limits.
+  upgrade       Atomic overnight ConnectOnion upgrades and morning REM reader schedule.
   logs          What each run did, and what it cost.
   morning       Preview or send one quiet morning note.
   doctor        Check that everything the notebook needs is installed.
@@ -526,10 +527,12 @@ Back:     co rem --help
 ```
 Open the notebook in your web browser to read it. Read-only: pages do not change.
 
-Usage:    co rem open [--local | --live] [--no-launch]
+Usage:    co rem open [--local | --live | --morning] [--no-launch]
 Example:  co rem open
           Opens a current view on this computer. Its language menu can translate
-          a page. Starts co ai in the background to serve the pages if needed.
+          a page. Starts co ai in the background on a stable local port (default
+          18765, stepping up if occupied) to serve the pages if needed, and
+          focuses an already-open local REM tab on macOS before opening another.
           If no co ai identity is set up, or co ai cannot start, opens a saved
           copy instead and says why.
           co rem open --local
@@ -537,6 +540,10 @@ Example:  co rem open
           Works offline and starts nothing; run it again to see newer pages.
           co rem open --live
           Opens the live view in O Chat, for reading from another device.
+          co rem open --morning
+          Safe daily morning open: runs only in a local graphical session with
+          an initialized notebook, opens at most once per local day, and skips
+          opening a second tab when a reader tab is already active.
           --no-launch prints the link without opening a browser.
 Effects:  Reads pages and changes none. May start a background server using your
           co ai identity. Its log (rem-live-host.log) and access token
@@ -998,7 +1005,9 @@ Keys:     models.level1 efforts.level1   gpt-6-luna at medium: tag, tag-node, tr
                                          "Read in" menu; unset, the ones detected from your own
                                          sent mail and typed sessions (shown under "your languages")
           schedule.times                 "03:00,17:00": set here, these win over any profile
-          schedule.profile               default | dense (a slot every 30 minutes, 22:00-07:00);
+          schedule.profile               default | dense (every 30 min, 22:00-07:00) |
+                                         overnight (5 starts 00:00-03:00, continuations stop at
+                                         03:30 so rolling 5h quotas stay clean for daytime work);
                                          compare nights with co rem status
           schedule.timezone              Australia/Sydney
           notify.channel                 none (default) | telegram | lark | whatsapp | email
@@ -1027,6 +1036,34 @@ Next:     co rem status
 Back:     co rem --help
 Tasks:    tasks.auto is true by default: the night starts owed work after its drafts.
           co rem config set tasks.auto false leaves it for morning approval.
+```
+
+## co rem upgrade
+
+```
+Manage atomic overnight ConnectOnion upgrades and the morning REM reader schedule.
+
+Usage:    co rem upgrade [status | run | enable | disable | morning] [OPTIONS]
+Example:  co rem upgrade status
+          co rem upgrade run --dry-run
+          co rem upgrade enable --channel preview --time 01:00
+          co rem upgrade enable --pin 1.9.7rc32
+          co rem upgrade disable
+          co rem upgrade morning --morning-time 08:45
+          co rem upgrade morning --disable-morning
+Options:  --channel stable|preview|pinned  Select the release channel for upgrades.
+          --pin VERSION                    Pin to one release and stop auto-upgrading past it.
+          --time HH:MM                     Local daily time for the upgrade job (default 01:00).
+          --dry-run                        Check PyPI and install eligibility without changing files.
+          --scheduled                      Used by launchd/systemd; keeps non-fatal logs quiet.
+          --morning-time HH:MM             Local daily time to open the REM reader in a GUI session.
+          --disable-morning                Turn off and remove the morning REM reader job.
+Effects:  Stages and verifies the new uv tool install before swapping, leaving the previous
+          co intact on any failure. After an upgrade succeeds, prewarms the REM reader HTML
+          cache and replaces an idle live Host on the same stable port. Never modifies
+          editable checkouts, project virtualenvs or system-managed Python installs.
+Next:     co rem status
+Back:     co rem --help
 ```
 
 ## co rem logs

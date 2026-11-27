@@ -92,6 +92,8 @@ def _spawn(directory: Path, port: int | None = None):
     if selected := explicit_env_file():
         command += ["--env-file", str(selected)]
     if port is None:
+        port = _preferred_port({})
+    if port is None:
         with socket.socket() as reservation:
             reservation.bind(("127.0.0.1", 0))
             port = reservation.getsockname()[1]
@@ -436,11 +438,26 @@ def recorded_gone(address: str) -> bool:
     return _gone(read_json(selected_identity_dir() / "rem-live-host.json", {}), address)
 
 
+def _preferred_port(saved) -> int | None:
+    """Stable preferred local port for the REM live Host.
+
+    Reuses `saved["port"]` when free (#3130); otherwise picks the first free
+    port in REM's dedicated range (`REM_DEFAULT_PORT`..`REM_DEFAULT_PORT+19`)
+    so fresh launches and restarts stay on a predictable local address instead
+    of jumping to a random OS port. Returns None only if all 20 ports are busy.
+    """
+    port = saved.get("port") if isinstance(saved, dict) else None
+    if isinstance(port, int) and _free(port):
+        return port
+    for candidate in range(REM_DEFAULT_PORT, REM_DEFAULT_PORT + REM_PORT_SPAN):
+        if _free(candidate):
+            return candidate
+    return None
+
+
 def _saved_port(saved):
-    """The port the last Host had, when it is free: an open reader tab keeps its address (#3130).
-    None lets _spawn take a random one, as before, when something else holds it."""
-    port = saved.get("port")
-    return port if isinstance(port, int) and _free(port) else None
+    """The port the last Host had, when it is free, or REM's preferred stable port."""
+    return _preferred_port(saved)
 
 
 def outdated(address: str) -> bool:
@@ -491,6 +508,10 @@ def start(address: str) -> str | None:
 
 # `co ai`'s own default port: a Host the owner started by hand is usually here.
 DEFAULT_PORT = 8000
+# Dedicated default port for REM's background live Host, keeping bookmarks and
+# repeated `co rem open` calls stable without colliding with common dev ports.
+REM_DEFAULT_PORT = 18765
+REM_PORT_SPAN = 20
 
 
 def _port(args) -> int | None:
@@ -527,10 +548,10 @@ def _other_version(port, address: str) -> bool:
 
 
 def _known_ports() -> list:
-    """Where this identity's Host can be on this computer: the port co rem started it on, then co ai's default."""
+    """Where this identity's Host can be on this computer: the recorded port, REM's default port, then co ai's default."""
     from ..project import selected_identity_dir
     saved = read_json(selected_identity_dir() / "rem-live-host.json", {})
-    return list(dict.fromkeys(p for p in (saved.get("port"), DEFAULT_PORT) if isinstance(p, int)))
+    return list(dict.fromkeys(p for p in (saved.get("port"), REM_DEFAULT_PORT, DEFAULT_PORT) if isinstance(p, int)))
 
 
 def local_reader(address: str) -> str | None:

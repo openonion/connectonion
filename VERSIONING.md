@@ -400,7 +400,12 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc31
+## Current Version: 1.9.7rc32
+Release candidate 1.9.7rc32 splits the 22k-line `reader.html` monolith into modular `connectonion/rem/reader_ui/` source files with zero-build Python memory assembly (#3478), introduces an opt-in five-start `overnight` REM schedule profile (`00:00`–`03:00` with a hard `03:30` continuation cutoff to protect daytime five-hour rolling quotas, #3480), adds atomic staged `co rem upgrade` automation with post-upgrade HTML cache prewarming and resilient scheduled wrappers (#3363, #3474), pins REM's local live Host to dedicated preferred port `18765`, adds macOS tab reuse and daily-deduped `co rem open --morning`, and extends browser post-upgrade build polling to 180 seconds with a persistent reload fallback. Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc32.md).
+
+- 1.9.7rc32 (Modular `reader_ui/` split #3478; five-start `overnight` schedule profile #3480; atomic overnight `co rem upgrade` with HTML prewarm #3363/#3474; stable local REM port `18765` and tab deduplication).
+
+### Previous candidate: 1.9.7rc31
 Release candidate 1.9.7rc31 introduces REM's Cold Porcelain visual grounding, four pluggable skins (`Porcelain`, `Klein`, `Onion`, `Classic`) across light and dark modes, a three-column entity/entry reading layout, and 56 real-notebook fixes across `#view=open` batch triage, `cover`/`public` quote redaction, Evidence Drawer stacking, 1,300+ contact table pagination, sub-120ms live search, 2D/3D graph theme sync, and cross-platform Keychain import error handling (#3470). Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc31.md).
 
 - 1.9.7rc31 (REM Porcelain-Viridian 4 skins, 3-column reading layout, and 56 real-notebook UI/privacy/performance/vault fixes #3470).

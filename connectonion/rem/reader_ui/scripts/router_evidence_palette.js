@@ -956,7 +956,12 @@ function waitForNewBuild(again = false) {
     const words = document.getElementById("upgrading-words");
     if (words) words.textContent = t("Switching to the new version…");
   }
-  if (waitForNewBuild.tries > 20) { waitForNewBuild.active = false; document.getElementById("upgrading")?.remove(); return; }
+  if (waitForNewBuild.tries > 45) {
+    waitForNewBuild.active = false;
+    document.getElementById("upgrading")?.remove();
+    offerReload();
+    return;
+  }
   setTimeout(async () => {
     if (waitForNewBuild.dismissed) return;
     const latest = await readVersion();

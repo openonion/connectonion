@@ -53,14 +53,58 @@ def fire_times(config: dict) -> list[str]:
     """Saved starts plus quarter-hour continuations, through three hours at most.
 
     Each window stops before the next saved start, including across midnight.
+    Bounded profiles such as `overnight` (#3480) additionally hard-stop
+    continuations at `continuation_window_end(config)` so turns never spill
+    into daytime rolling-quota windows.
     The saved config remains the source of due slots and consent.
     """
+    from .config import continuation_window_end
+
     starts = sorted({int(value[:2]) * 60 + int(value[3:]) for value in config["schedule"]["times"]})
+    cutoff_str = continuation_window_end(config)
+    cutoff = int(cutoff_str[:2]) * 60 + int(cutoff_str[3:]) if cutoff_str else None
     minutes = set()
     for index, start in enumerate(starts):
         gap = (starts[(index + 1) % len(starts)] - start) % 1440 or 1440
-        minutes.update((start + offset) % 1440 for offset in range(0, min(180, gap - 1) + 1, 15))
+        limit = min(180, gap - 1)
+        if cutoff is not None:
+            to_cutoff = (cutoff - start) % 1440
+            limit = min(limit, to_cutoff)
+        minutes.update((start + offset) % 1440 for offset in range(0, limit + 1, 15))
     return [f"{minute // 60:02}:{minute % 60:02}" for minute in sorted(minutes)]
+
+
+def describe_schedule_window(config: dict) -> dict:
+    """Human- and machine-readable summary of starts, timezone, and continuation bounds (#3480)."""
+    from .config import continuation_window_end
+
+    schedule = config["schedule"]
+    times = list(schedule["times"])
+    fired = fire_times(config)
+    window_end = continuation_window_end(config)
+    latest_fire = window_end if window_end and window_end in fired else (fired[-1] if fired else None)
+    profile = schedule.get("profile", "default")
+    tz = schedule.get("timezone", "")
+    if window_end:
+        summary = (
+            f"{profile}: {len(times)} starts ({', '.join(times)}) {tz}; "
+            f"15-min continuations stop at {window_end} ({len(fired)} fires/day)"
+        )
+    else:
+        summary = (
+            f"{profile}: {len(times)} starts ({', '.join(times)}) {tz}; "
+            f"15-min continuations up to 3h per slot ({len(fired)} fires/day)"
+        )
+    return {
+        "profile": profile,
+        "times": times,
+        "timezone": tz,
+        "continuation_step_minutes": 15,
+        "window_end": window_end,
+        "latest_fire": latest_fire,
+        "fire_count": len(fired),
+        "summary": summary,
+    }
 
 
 def recurrence(config: dict) -> str:

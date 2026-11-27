@@ -184,12 +184,31 @@ def default_config() -> dict:
 
 
 LANGUAGE = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*")
-# D-104: schedules are compared night against night (.state/night-stats.jsonl). dense is a
-# slot every 30 minutes from 22:00 to 07:00, each with its 15-minute follow-ups.
+# D-104: schedules are compared night against night (.state/night-stats.jsonl).
+# dense is a slot every 30 minutes from 22:00 to 07:00, each with its 15-minute follow-ups.
+# #3480: overnight concentrates five start slots inside 00:00-03:00 with a 03:30 hard stop on
+# continuations, keeping >= 5 clean hours before daytime coding starts for rolling 5h quotas.
 # Times set with `config set schedule.times` win over any profile.
 PROFILES = {"default": default_config()["schedule"]["times"],
             "dense": sorted(f"{hour:02d}:{minute:02d}" for hour in (*range(22, 24), *range(0, 8))
-                            for minute in (0, 30) if (hour, minute) != (7, 30))}
+                            for minute in (0, 30) if (hour, minute) != (7, 30)),
+            "overnight": ["00:00", "00:45", "01:30", "02:15", "03:00"]}
+PROFILE_WINDOW_ENDS = {"overnight": "03:30"}
+
+
+def continuation_window_end(config: dict) -> str | None:
+    """Hard cutoff (HH:MM) for 15-minute continuation turns on bounded overnight profiles (#3480)."""
+    raw_schedule = config.get("schedule")
+    if not isinstance(raw_schedule, dict):
+        return None
+    profile = raw_schedule.get("profile")
+    if not isinstance(profile, str):
+        return None
+    cutoff = PROFILE_WINDOW_ENDS.get(profile)
+    if not cutoff:
+        return None
+    # Only enforce the profile cutoff when times match the profile (explicit custom times keep their own span).
+    return cutoff if list(raw_schedule.get("times") or []) == list(PROFILES[profile]) else None
 
 
 def validate(config: dict) -> dict:
@@ -234,7 +253,9 @@ def validate(config: dict) -> dict:
                        for value in hours.values()) or hours['start'] >= hours['end']):
             raise RemError('schedule.working_hours requires start before end, both HH:MM')
     if schedule["profile"] not in PROFILES:
-        raise RemError(f"schedule.profile must be {' or '.join(PROFILES)}")
+        names = list(PROFILES)
+        listed = ", ".join(names[:-1]) + " or " + names[-1] if len(names) > 1 else names[0]
+        raise RemError(f"schedule.profile must be {listed}")
     if schedule["runner"] not in ("codex-exec", "codex-app"):
         raise RemError("schedule.runner must be codex-exec or codex-app")
     times = schedule["times"]

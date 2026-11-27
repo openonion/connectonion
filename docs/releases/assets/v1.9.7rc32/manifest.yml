@@ -1,0 +1,2 @@
+version: v1.9.7rc32
+no_visual_change: "CLI, scheduler, atomic auto-upgrade, stable port 18765, tab deduplication, and zero-build reader_ui/ source split; no visual layout or theme changes beyond 1.9.7rc31."
