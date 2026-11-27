@@ -46,21 +46,68 @@ your shell first, then the selected env file, then the encrypted store.
 | command | does | changes |
 |---|---|---|
 | `co notion check [--target LINK]` | which key acts, its workspace, whether it can read a target | Read-only |
-| `co notion pages [--type page\|database] [--cursor C]` | everything this key can read, newest edit first, paged | Read-only |
-| `co notion search "<words>" [--type page\|database] [--cursor C]` | titles this key can read that contain the words, newest first, paged | Read-only |
-| `co notion page LINK [--max-blocks N] [--depth N]` | properties, nested content, files, coverage | Read-only |
-| `co notion db LINK [--where …] [--sort …] [--cursor C] [--source S]` | rows with every property, filtered and sorted | Read-only |
-| `co notion columns LINK [--source S]` | column names, ids, types and options | Read-only |
+| `co notion pages [--type page\|database] [--cursor C]` | everything this key can read, newest edit first, numbered, paged | Read-only |
+| `co notion search "<words>" [--type page\|database] [--cursor C]` | titles this key can read that contain the words, numbered, paged | Read-only |
+| `co notion page ROW\|LINK [--max-blocks N] [--depth N] [--md]` | properties, nested content, files, coverage; `--md` as a Markdown document | Read-only |
+| `co notion db ROW\|LINK [--where …] [--sort …] [--cursor C] [--source S]` | rows with every property, numbered, filtered and sorted | Read-only |
+| `co notion columns ROW\|LINK [--source S]` | column names, ids, types and options | Read-only |
 
-Every list takes `--json` and `-n`. Every command ends with one `Next:` line.
+Every list takes `--json`, `--ids` and `-n`. Every command ends with one `Next:` line.
 
-## Links
+`pages` and `search` show up to 100 rows by default, one request to Notion, so
+most lists are whole. When there are more, the first line says
+`(more available)` and the `Next:` line is the `--cursor` command for the next
+rows. A cursor carries a check of the list it came from: used with other words,
+`--type`, columns or `-n`, it is refused (exit 2) instead of continuing a
+different list.
 
-A page or database is named by its link or id. The id is read from the link
+```text
+$ co notion pages
+3 shared items
+1.  page      2026-11-15  Roadmap
+2.  database  2026-11-14  Tasks
+3.  page      2026-11-12  Meeting notes
+Listing: 6f1c… (15 min; optional --listing ID pins these rows)
+This lists what this key can read (…); it is not a list of the whole workspace.
+Next: co notion page 1
+
+$ co notion db 2 --where "Status=In progress"
+1 row in Tasks
+1.  2026-11-14  Write docs  Status: In progress  Tags: docs, q4
+Listing: 9a0d… (15 min; optional --listing ID pins these rows)
+Next: co notion page 1
+```
+
+## Rows, links and ids
+
+| you give | where it comes from |
+|---|---|
+| a row number to `page`, `db`, `columns` | the latest list: `pages`, `search` or `db` |
+| a link | copied from Notion (Share → Copy link) |
+| an id | `--ids`, `--json`, or the child page lines of `co notion page` |
+
+Rows last 15 minutes and belong to the key that listed them. The numbers
+always refer to the last list shown, so after `co notion db 2` the rows of
+that database are 1, 2, 3…; `--listing <id>` pins an older list. With
+`--json` no rows are saved: scripts use ids.
+
+A page or database link or id works wherever a row number does. The id is read from the link
 the way Notion builds it: `Title-<id>` in the path (a title made of hex letters
 is never read as part of the id), `?v=<view>` keeps the database as the object,
 `?p=<page>` (a record opened in peek view) names that record, and `#<block>` is
 an anchor on the page (the whole page is shown).
+
+## A page as Markdown
+
+`co notion page 1 --md > roadmap.md` prints the page as a Markdown document:
+YAML front matter (title, id, link, last edit, the properties that have a
+value), `# Title`, then the content. Notion's headings move down one level
+under the title; bold, italic, strikethrough, inline code and links are kept;
+tables get their header rule; nested list items stay nested; child pages are
+links. A partial read says **Incomplete** at the top, and a block with no
+Markdown form is kept as `*[unsupported block: …]*`. Files Notion hosts are
+links that expire about an hour after the read. The `Next:` line goes to
+stderr, so the redirected file is only the document.
 
 ## Reading completely, and saying when it is not
 
@@ -71,14 +118,21 @@ an anchor on the page (the whole page is shown).
 - **page** reads nested blocks depth first (to `--depth`, default 8) up to
   `--max-blocks` (default 2000), following Notion's pagination. The last lines
   say `complete` or `INCOMPLETE: <what stopped it>`, which block types were not
-  rendered, every file (hosted by Notion with its link expiry, or external), and
-  every child page and database with the command that opens it. Tables are
+  rendered as Markdown in the terminal (headings, lists, tables, bold), and
+  every file listed once after it (hosted by Notion with its link expiry, or
+  external).
+  The pages a relation links to are listed by title under the properties, as
+  Notion shows them, and the child pages and databases after the content; all
+  of them are numbered, so `co notion page 2` opens the second. Each title is
+  one read, at most 25 per page; a linked page this key cannot read is counted,
+  never named. In `db` lists a relation shows only its count. Tables are
   rendered as `| a | b |` rows. Links in the text keep their target as
   `[text](https://…)`; a link that is not http(s) is shown as its text only.
 - **Properties** under `--json` keep their type: `0`, `false` and `null`
   survive, dates keep start/end/time zone, people keep ids, relations keep the
-  linked page ids. A relation or people list past Notion's 25-reference cap is
-  fetched in full from the property endpoint.
+  linked page ids, and `linked` names the ones whose titles were read. A
+  relation or people list past Notion's 25-reference cap is fetched in full
+  from the property endpoint.
 
 ## Databases and data sources
 

@@ -188,8 +188,9 @@ def test_search_pages_through_with_a_cursor(notion):
     first = run("pages", "--type", "page", "-n", "1")
     assert first.exit_code == 0 and "(more available)" in first.stdout
     cursor = re.search(r"--cursor (\S+)", last_line(first.stdout))[1]
+    first_id = json.loads(run("pages", "--type", "page", "-n", "1", "--json").stdout)["results"][0]["id"]
     second = run("pages", "--type", "page", "-n", "1", "--cursor", cursor, "--json")
-    assert json.loads(second.stdout)["results"][0]["id"] != re.search(r"^(\S+)", first.stdout.splitlines()[1])[1]
+    assert json.loads(second.stdout)["results"][0]["id"] != first_id
 
 
 def test_an_empty_search_does_not_claim_the_page_is_absent(notion):
@@ -247,19 +248,236 @@ def test_check_points_at_pages(notion):
     assert last_line(run("check").stdout) == "Next: co notion pages"
 
 
+# -- row numbers: a list is numbered, and page, db and columns take the number ------------
+
+def test_pages_numbers_its_rows_and_hides_long_ids(notion):
+    result = run("pages")
+    assert result.exit_code == 0, result.output
+    rows = [line for line in result.stdout.splitlines() if re.match(r"\s*\d+\. ", line)]
+    assert rows and rows[0].lstrip().startswith("1. ")
+    assert ROADMAP not in result.stdout and "Listing: " in result.stdout
+    assert re.fullmatch(r"Next: co notion (page|columns) 1", last_line(result.stdout))
+
+
+def test_ids_flag_shows_each_rows_id(notion):
+    assert ROADMAP in run("pages", "--ids").stdout
+
+
+def test_page_takes_a_row_number_from_the_last_list(notion):
+    shown = json.loads(run("pages", "--type", "page", "--json").stdout)["results"]
+    run("pages", "--type", "page")
+    result = run("page", "1")
+    assert result.exit_code == 0, result.output
+    assert shown[0]["title"] in result.stdout
+    assert ("GET", f"pages/{shown[0]['id']}") in [s[:2] for s in notion.sent]
+
+
+def test_db_and_columns_take_a_database_row_number(notion):
+    run("pages", "--type", "database")
+    names = [line.split(None, 3)[-1] for line in run("pages", "--type", "database").stdout.splitlines()
+             if re.match(r"\s*\d+\. ", line)]
+    number = str(names.index("Tasks") + 1)
+    assert "columns in Tasks" in run("columns", number).stdout
+    listed = run("db", number)
+    assert listed.exit_code == 0, listed.output
+    assert "Write docs" in listed.stdout and ROW not in listed.stdout
+    assert last_line(listed.stdout) == "Next: co notion page 1"
+    # The rows just listed are now the last list: page 1 is the first row of Tasks.
+    assert "Write docs" in run("page", "1").stdout
+
+
+def test_a_listing_id_pins_rows_after_another_list(notion):
+    first = run("pages", "--type", "page")
+    token = re.search(r"Listing: ([0-9a-f]{32})", first.stdout)[1]
+    title = json.loads(run("pages", "--type", "page", "--json").stdout)["results"][0]["title"]
+    run("db", TASKS_DB)
+    assert title in run("page", "1", "--listing", token).stdout
+
+
+def test_a_row_number_without_a_list_is_a_usage_error(notion):
+    result = run("page", "1")
+    assert result.exit_code == 2 and "No recent Notion list" in result.output
+    assert "Next: co notion pages" in result.output
+
+
+def test_a_row_number_past_the_list_is_refused(notion):
+    run("pages", "--type", "page")
+    result = run("page", "99")
+    assert result.exit_code == 2 and "Relist" in result.output
+
+
+def test_row_numbers_belong_to_the_key_that_listed_them(notion):
+    run("pages")
+    notion.workspace = {**notion.workspace, "id": "another-bot"}
+    result = run("page", "1")
+    assert result.exit_code == 2 and "another account" in result.output
+
+
+def test_json_saves_no_row_numbers(notion):
+    found = json.loads(run("pages", "--json").stdout)
+    assert "Listing" not in json.dumps(found)
+    assert run("page", "1").exit_code == 2
+
+
+def test_an_empty_list_forgets_the_old_numbers(notion, monkeypatch):
+    run("pages")
+    monkeypatch.setattr(api, "search", lambda *a, **k: ([], ""))
+    run("pages")
+    assert run("page", "1").exit_code == 2
+
+
+# -- cursors: bound to the list they came from, as co gmail binds its mailbox cursors ----
+
+def test_lists_default_to_one_full_request(notion):
+    run("pages")
+    assert notion.sent[-1][2]["page_size"] == 100
+
+
+def test_a_cursor_continues_only_its_own_list(notion):
+    first = run("pages", "--type", "page", "-n", "1")
+    cursor = re.search(r"--cursor (\S+)", last_line(first.stdout))[1]
+    assert "." in cursor
+    assert run("pages", "--type", "page", "-n", "1", "--cursor", cursor).exit_code == 0
+    other = run("pages", "--type", "page", "-n", "2", "--cursor", cursor)
+    assert other.exit_code == 2 and "belongs to another list" in other.output
+    assert run("search", "Road", "-n", "1", "--cursor", cursor).exit_code == 2
+
+
+def test_a_bare_notion_cursor_is_refused(notion):
+    result = run("pages", "--cursor", uid(999))
+    assert result.exit_code == 2 and not [s for s in notion.sent if s[1] == "search"]
+
+
+def test_db_cursor_is_bound_to_its_filter(notion):
+    first = json.loads(run("db", TASKS_DB, "-n", "1", "--json").stdout)
+    if first["next_cursor"]:
+        moved = run("db", TASKS_DB, "-n", "1", "--where", "Status=Done", "--cursor", first["next_cursor"])
+        assert moved.exit_code == 2
+
+
+# -- page --md: a Markdown document -----------------------------------------
+
+def test_page_md_is_a_markdown_document(notion):
+    result = run("page", ROADMAP, "--md")
+    assert result.exit_code == 0, result.output
+    doc = result.stdout
+    assert doc.startswith("---\ntitle: \"Roadmap\"\n")
+    assert "\n# Roadmap\n" in doc and "\n## Q4\n" in doc
+    assert "| Owner | Ann |\n| --- | --- |" in doc
+    assert "![Architecture](https://files.notion.test/arch.png)" in doc
+    assert f"[Notes](https://www.notion.so/{CHILD.replace('-', '')})" in doc
+    assert "- [x] Write tests" in doc
+    assert "*[unsupported block: ai_block]*" in doc
+    assert "Next:" not in result.stdout and "Next: co notion pages" in result.stderr
+
+
+def test_page_md_nests_list_children_under_their_item(notion):
+    doc = run("page", ROADMAP, "--md").stdout
+    assert "- Details\n\n  Nested line\n\n  - deeper\n\n    deepest" in doc
+
+
+def test_page_md_keeps_bold_italic_code_and_links(notion):
+    notion.set_blocks(CHILD, [{"type": "paragraph", "paragraph": {"rich_text": [
+        {"type": "text", "plain_text": "bold ", "annotations": {"bold": True}},
+        {"type": "text", "plain_text": "code", "annotations": {"code": True}},
+        {"type": "text", "plain_text": " and ", "annotations": {}},
+        {"type": "text", "plain_text": "site", "href": "https://example.test", "annotations": {"italic": True}}]}}])
+    assert "**bold** `code` and [*site*](https://example.test)" in run("page", CHILD, "--md").stdout
+
+
+def test_page_md_says_a_partial_read_at_the_top(notion):
+    doc = run("page", ROADMAP, "--md", "--max-blocks", "2").stdout
+    assert "> **Incomplete:**" in doc.split("# Roadmap", 1)[1].split("\n\n")[1]
+
+
+def test_page_md_and_json_together_is_a_usage_error(notion):
+    assert run("page", ROADMAP, "--md", "--json").exit_code == 2 and not notion.sent
+
+
+# -- cursors: bound to the list they came from, as co gmail binds its mailbox cursors ----
+
+def test_a_cursor_from_one_list_is_refused_on_another(notion):
+    first = run("pages", "--type", "page", "-n", "1")
+    cursor = re.search(r"--cursor (\S+)", last_line(first.stdout))[1]
+    wrong = run("search", "Road", "--type", "page", "-n", "1", "--cursor", cursor)
+    assert wrong.exit_code == 2 and "belongs to another list" in wrong.output
+    other_n = run("pages", "--type", "page", "-n", "2", "--cursor", cursor)
+    assert other_n.exit_code == 2
+    assert run("pages", "--type", "page", "-n", "1", "--cursor", cursor).exit_code == 0
+
+
+def test_lists_ask_for_one_full_request_by_default(notion):
+    run("pages")
+    assert notion.sent[-1][2]["page_size"] == 100
+
+
+# -- --md: the page as a Markdown document ------------------------------------
+
+def _styled(text, **notes):
+    return {"type": "text", "plain_text": text, "text": {"content": text},
+            "annotations": {"bold": False, "italic": False, "strikethrough": False, "code": False, **notes}}
+
+
+def test_md_is_a_markdown_document_with_front_matter(notion):
+    result = run("page", ROW, "--md")
+    assert result.exit_code == 0, result.output
+    doc = result.stdout
+    assert doc.startswith("---\ntitle: \"Write docs\"\n")
+    assert '  "Status": "In progress"' in doc and "\n# Write docs\n" in doc
+    assert "Next:" not in result.stdout and "Next: co notion pages" in result.stderr
+
+
+def test_md_keeps_headings_lists_tables_links_and_styles(notion):
+    notion.set_blocks(CHILD, [
+        {"type": "paragraph", "paragraph": {"rich_text": [_styled("bold", bold=True), _styled(" and "),
+                                                          _styled("code ", code=True)]}},
+        {"type": "table", "table": {"table_width": 2}, "children": [
+            {"type": "table_row", "table_row": {"cells": [rich("A"), rich("B")]}},
+            {"type": "table_row", "table_row": {"cells": [rich("1"), rich("2|3")]}}]},
+        {"type": "numbered_list_item", "numbered_list_item": {"rich_text": rich("first")},
+         "children": [para("inside")]},
+        {"type": "child_page", "child_page": {"title": "Sub"}, "id": ROADMAP},
+    ])
+    doc = run("page", CHILD, "--md").stdout
+    assert "**bold** and `code` " in doc
+    assert "| A | B |\n| --- | --- |\n| 1 | 2\\|3 |" in doc
+    assert "1. first\n\n   inside" in doc
+    assert f"[Sub](https://www.notion.so/{ROADMAP.replace('-', '')})" in doc
+
+
+def test_md_of_the_roadmap_renders_its_blocks(notion):
+    doc = run("page", ROADMAP, "--md").stdout
+    assert "## Q4" in doc and "- [x] Write tests" in doc
+    assert "![Architecture](https://files.notion.test/arch.png)" in doc
+    assert "*[unsupported block: ai_block]*" in doc and "expire" in doc
+
+
+def test_md_says_at_the_top_when_the_read_stopped(notion):
+    doc = run("page", ROADMAP, "--md", "--max-blocks", "2").stdout
+    assert "> **Incomplete:**" in doc.split("# Roadmap", 1)[1].split("\n\n")[1]
+
+
+def test_md_and_json_together_is_a_usage_error(notion):
+    assert run("page", ROW, "--md", "--json").exit_code == 2
+
+
 # -- page ------------------------------------------------------------------
 
 def test_page_reads_nested_blocks_tables_files_and_children(notion):
     result = run("page", ROADMAP)
     assert result.exit_code == 0, result.output
     out = result.stdout
-    assert "# Q4" in out and "▸ Details" in out
-    assert "\n  Nested line" in out and "\n  - deeper" in out and "\n    deepest" in out
-    assert "| Owner | Ann |" in out and "- [x] Write tests" in out
-    assert "[image: Architecture] (hosted by Notion, link expires 2026-10-24T01:00:00.000Z)" in out
-    assert "[unsupported block: ai_block]" in out and "Not rendered" in out and "ai_block ×1" in out
-    assert f"Child page: Notes — co notion page {CHILD}" in out
-    assert "; complete" in out
+    # The content is rendered as Markdown, as co obsidian renders a note: no raw # or | marks.
+    assert out.startswith(f"Roadmap  {ROADMAP}\nEdited: ") and "Created: " in out.splitlines()[1]
+    assert "\nQ4\n" in out and "# Q4" not in out and "• Details" in out
+    assert "   Nested line" in out and "• deeper" in out and "deepest" in out
+    assert re.search(r"Owner\s+Ann", out) and "| Owner |" not in out and "• [x] Write tests" in out
+    assert "[image: Architecture]\n" in out                       # named in the content, its file listed once
+    assert out.count("Architecture") == 2 and "File: Architecture (image; hosted by Notion" in out
+    assert "[unsupported block: ai_block]" in out and "Not rendered (shown as [unsupported block])" in out
+    assert "Notes (child page)" in out and CHILD not in out
+    assert re.search(r"Child page:\n\s+1\.\s+Notes", out)
+    assert "; complete" in out and not any(line != line.rstrip() for line in out.splitlines())
 
 
 def test_a_limit_is_reported_and_never_presented_as_the_whole_page(notion):
@@ -307,7 +525,53 @@ def test_a_row_page_points_at_the_rest_of_its_database(notion):
 
 
 def test_a_page_with_child_pages_points_at_the_first_one(notion):
-    assert last_line(run("page", ROADMAP).stdout) == f"Next: co notion page {CHILD}"
+    assert last_line(run("page", ROADMAP).stdout) == "Next: co notion page 1"
+    assert "child text" in run("page", "1").stdout
+
+
+# -- what a page links to: relations by title, numbered with its child pages -----------------
+
+def _linked_row(notion):
+    notion.add_page(uid(60), "Quiz 1", parent={"type": "page_id", "page_id": ROADMAP})
+    notion.add_page(uid(61), "Final Exam", parent={"type": "page_id", "page_id": ROADMAP})
+    notion.add_row(TASKS, uid(62), task("Calculus 1", related=[uid(60), uid(61), uid(999)]))
+    return uid(62)
+
+
+def test_a_relation_shows_the_linked_pages_by_title_numbered_to_open(notion):
+    row = _linked_row(notion)
+    out = run("page", row).stdout
+    assert re.search(r"Related \(3 linked\):\n\s+1\.\s+Quiz 1\n\s+2\.\s+Final Exam", out)
+    assert "1 more not shown" in out and uid(60) not in out
+    assert last_line(out) == "Next: co notion page 1"
+    assert "Final Exam" in run("page", "2").stdout.splitlines()[0]
+
+
+def test_page_json_names_the_linked_pages_and_keeps_every_id(notion):
+    row = _linked_row(notion)
+    detail = json.loads(run("page", row, "--json").stdout)
+    assert detail["linked"]["Related"] == [{"id": uid(60), "title": "Quiz 1"}, {"id": uid(61), "title": "Final Exam"}]
+    assert detail["properties"]["Related"]["value"] == [uid(60), uid(61), uid(999)]
+
+
+def test_a_relation_no_page_of_which_is_readable_is_counted_not_guessed(notion):
+    out = run("page", ROW).stdout
+    assert "Related (30 linked): none this key can read" in out
+
+
+def test_db_rows_show_a_relation_as_its_count(notion):
+    row = _linked_row(notion)
+    out = run("db", TASKS_DB).stdout
+    assert "Related: 3 linked" in out and uid(60) not in out
+
+
+def test_titles_are_read_for_at_most_25_linked_pages(notion, monkeypatch):
+    from connectonion.cli.commands import notion_commands
+    monkeypatch.setattr(notion_commands, "LINKED_TITLES", 1)
+    row = _linked_row(notion)
+    run("page", row)
+    reads = [path for method, path, _ in notion.sent if method == "GET" and path in (f"pages/{uid(60)}", f"pages/{uid(61)}")]
+    assert reads == [f"pages/{uid(60)}"]
 
 
 # -- data sources ----------------------------------------------------------
@@ -407,7 +671,8 @@ def test_f05_links_in_content_are_shown_with_their_targets(notion):
         {"type": "text", "plain_text": "the spec", "href": "https://spec.test/v1",
          "text": {"content": "the spec", "link": {"url": "https://spec.test/v1"}}},
         {"type": "text", "plain_text": "!", "href": "javascript:alert(1)", "text": {"content": "!"}}]}}])
-    assert "See [the spec](https://spec.test/v1)!" in run("page", CHILD).stdout
+    assert "See the spec (https://spec.test/v1)!" in run("page", CHILD).stdout      # rendered, target kept
+    assert "See [the spec](https://spec.test/v1)!" in run("page", CHILD, "--md").stdout
 
 
 def test_restricted_resource_is_a_missing_capability_not_an_unshared_page(notion):
@@ -454,3 +719,43 @@ def test_every_request_a_command_makes_is_a_read(notion):
     assert notion.sent
     assert all(method == "GET" or (method == "POST" and (path == "search" or path.endswith("/query")))
                for method, path, _ in notion.sent if method != "SLEEP")
+
+
+def test_a_database_command_given_a_page_says_so_and_points_at_the_databases(notion):
+    run("db", TASKS_DB)                     # the last list is now the rows of Tasks
+    result = run("columns", "1")            # row 1 is a page, not a database
+    assert result.exit_code == 1
+    assert "Write docs is a page (a row of a database), not a database" in result.stderr
+    assert last_line(result.stderr) == "Next: co notion pages --type database"
+
+
+def test_a_page_shows_its_properties_under_a_heading_and_its_times_labelled(notion):
+    out = run("page", ROW).stdout
+    assert out.splitlines()[1].startswith("Edited: ") and "Created: " in out.splitlines()[1]
+    assert "\nProperties\n  Status: In progress\n" in out and "No content." in out
+
+
+def test_a_title_with_line_breaks_is_shown_on_one_line_and_kept_whole_in_json(notion):
+    two_lines = "Why Do Humans Need Sleep?\nSleep is one of the most important processes."
+    notion.add_page(uid(80), two_lines, parent={"type": "page_id", "page_id": ROADMAP},
+                    edited="2026-11-24T00:00:00.000Z")
+    one_line = "Why Do Humans Need Sleep? Sleep is one of the most important processes."
+    listed = run("pages", "--type", "page").stdout
+    assert re.search(r"\n\s*1\.\s+page\s+2026-11-24\s+" + re.escape(one_line) + "\n", listed)
+    assert "\nSleep is one" not in listed
+    shown = run("page", uid(80)).stdout
+    assert shown.splitlines()[0] == f"{one_line}  {uid(80)}"
+    doc = run("page", uid(80), "--md").stdout
+    assert f"\n# {one_line}\n" in doc and 'title: "Why Do Humans Need Sleep?\\nSleep' in doc
+    assert json.loads(run("page", uid(80), "--json").stdout)["title"] == two_lines
+
+
+def test_md_keeps_backticks_inside_code(notion):
+    from markdown_it import MarkdownIt
+    from connectonion.cli.commands import notion_markdown as md
+    span = md.inline([_styled("a`b", code=True)])
+    assert MarkdownIt().parseInline(span)[0].children[0].content == "a`b"
+    block = md.block_markdown({"type": "code", "code": {"language": "md",
+                                                         "rich_text": [{"plain_text": "before\n```\nafter"}]}})
+    tokens = [t for t in MarkdownIt().parse(block) if t.type == "fence"]
+    assert len(tokens) == 1 and tokens[0].content == "before\n```\nafter\n"

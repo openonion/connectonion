@@ -33,11 +33,16 @@ it everything under it.
 
 | The user wants to… | Command |
 |---|---|
-| read a page they linked or named | `co notion page <link>` |
+| read a page they linked or named | `co notion page <link>`, or its row number from the last list |
 | see everything co can reach | `co notion pages` |
 | find a page by its title | `co notion search "<words>"` |
 | see which records match something | `co notion db <database> --where … --sort …` |
 | know a database's fields and allowed values | `co notion columns <database>` |
+
+`<database>` and a page can be a row number from the last list (`pages`,
+`search` or `db`), a link or an id. Numbers always mean the **last** list
+shown and expire after 15 minutes; with several lists in play, use the id
+(`--ids`) or `--listing`. Under `--json` no numbers are saved: use ids.
 
 There is no command to create, change or delete anything in Notion. If the
 user asks for that, say so; do not try another way.
@@ -62,8 +67,10 @@ user asks for that, say so; do not try another way.
   `0 results` from search means nothing it can read matched — not that the page
   does not exist. `(more available)` means there are more: follow the
   `--cursor` command in the last line before saying "that's all".
-- **page:** the last lines say `complete` or `INCOMPLETE: …`, list files
-  (hosted, external) and child pages/databases with their commands. If
+- **page:** the last lines say `complete` or `INCOMPLETE: …` and list files
+  (hosted, external). Linked pages (under their relation) and child pages are
+  numbered: `co notion page <n>` opens one. A relation's "… more not shown"
+  pages exist but were not read; do not say there are none. If
   incomplete, say which part you read; never write "the page has no X".
 - **db:** `(more available)` means there are more rows; follow `--cursor`.
   A query Notion stopped at 10,000 results says so: narrow it with `--where`.
