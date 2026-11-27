@@ -1372,6 +1372,121 @@ def _has_saved_page(root: Path) -> bool:
         return False
 
 
+def gui_available() -> bool:
+    """Is there a local graphical desktop session able to open a browser? Never True on headless servers."""
+    if sys.platform == "darwin":
+        from .live_host import launch_session
+        return launch_session() == "Aqua"
+    if sys.platform.startswith("linux"):
+        return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    return os.name == "nt"
+
+
+def _focus_existing_tab(url: str) -> bool:
+    """Best-effort macOS tab focus for an already-open local REM reader tab to avoid duplicate tabs."""
+    if sys.platform != "darwin":
+        return False
+    base = url.split("?")[0].rstrip("/")
+    if not base.startswith("http://127.0.0.1:"):
+        return False
+    safe_base = base.replace("\\", "\\\\").replace('"', '\\"')
+    script = (
+        f'set targetPrefix to "{safe_base}"\n'
+        'repeat with appName in {"Google Chrome", "Arc", "Brave Browser"}\n'
+        '  if application appName is running then\n'
+        '    try\n'
+        '      tell application appName\n'
+        '        repeat with w in windows\n'
+        '          set tabIndex to 0\n'
+        '          repeat with t in tabs of w\n'
+        '            set tabIndex to tabIndex + 1\n'
+        '            if (URL of t as text) starts with targetPrefix then\n'
+        '              set active tab index of w to tabIndex\n'
+        '              set index of w to 1\n'
+        '              activate\n'
+        '              return "focused"\n'
+        '            end if\n'
+        '          end repeat\n'
+        '        end repeat\n'
+        '      end tell\n'
+        '    end try\n'
+        '  end if\n'
+        'end repeat\n'
+        'if application "Safari" is running then\n'
+        '  try\n'
+        '    tell application "Safari"\n'
+        '      repeat with w in windows\n'
+        '        repeat with t in tabs of w\n'
+        '          if (URL of t as text) starts with targetPrefix then\n'
+        '            set current tab of w to t\n'
+        '            set index of w to 1\n'
+        '            activate\n'
+        '            return "focused"\n'
+        '          end if\n'
+        '        end repeat\n'
+        '      end repeat\n'
+        '    end tell\n'
+        '  end try\n'
+        'end if\n'
+        'return ""\n'
+    )
+    try:
+        done = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=2)
+        return done.returncode == 0 and done.stdout.strip() == "focused"
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def _active_reader_open(address: str | None, *, max_age_s: float = 90.0) -> bool:
+    """Is an authenticated REM live reader tab currently polling the local Host?"""
+    if not address:
+        return False
+    from .live_host import local_reader, reader_token
+    from ..project import selected_identity_dir
+    base = local_reader(address)
+    if not base:
+        return False
+    try:
+        import httpx
+        token = reader_token(selected_identity_dir())
+        response = httpx.get(f"{base}/rem/version?probe=1", headers={"Cookie": f"co_rem={token}"}, timeout=1.0)
+        if response.status_code != 200:
+            return False
+        age = response.json().get("active_reader_age_s")
+        return isinstance(age, (int, float)) and age < max_age_s
+    except Exception:
+        return False
+
+
+def open_morning(root: Path, address: str | None, *, launch: bool = True, now=None) -> dict:
+    """Safe daily morning REM reader open (#3474): GUI-only, initialized-only, daily deduped, no duplicate tabs."""
+    from datetime import datetime, timezone
+    from .config import read_config
+    from .files import read_json, state_path, write_json
+    from .service import notebook_zone
+
+    root = Path(root)
+    if not (root / "config.yaml").is_file():
+        return {"outcome": "skipped", "reason": "REM notebook is not initialized yet"}
+    if not gui_available():
+        return {"outcome": "skipped", "reason": "no local graphical session is available"}
+
+    moment = now() if now is not None else datetime.now(timezone.utc)
+    zone = notebook_zone(read_config(root))
+    local_day = moment.astimezone(zone).date().isoformat()
+    marker = state_path(root, "morning-open.json")
+    saved = read_json(marker, {})
+    if saved.get("date") == local_day:
+        return {"outcome": "skipped", "reason": f"REM reader was already opened today ({local_day})", "date": local_day}
+    if _active_reader_open(address):
+        write_json(marker, {"date": local_day, "at": moment.isoformat(), "status": "already_open"})
+        return {"outcome": "skipped", "reason": "REM reader is already open in a browser tab", "date": local_day}
+
+    result = local_or_snapshot(root, address, launch=launch)
+    write_json(marker, {"date": local_day, "at": moment.isoformat(), "status": "opened", "page": result.get("page")})
+    return {**result, "outcome": "opened", "date": local_day}
+
+
 def local_or_snapshot(root: Path, address, *, launch: bool, say=None) -> dict:
     """What a bare `co rem open` shows: the reader served by this computer's co ai
     Host (started when none runs), or the snapshot, saying why."""
@@ -1390,9 +1505,13 @@ def local_or_snapshot(root: Path, address, *, launch: bool, say=None) -> dict:
         return open_snapshot(root, launch=launch, say=say, live=f"Live reader unavailable: {failure}; showing a snapshot")
     if _has_saved_page(root):  # an explicit open is the owner acting
         _rebuild_stale(root, "live.html", reader_version(root), owner=True)
+    reused_tab = False
     if launch:
-        webbrowser.open(url)
+        reused_tab = _focus_existing_tab(url)
+        if not reused_tab:
+            webbrowser.open(url)
     return {"page": url.split("?")[0], "link": url, "launched": launch,
+            **({"reused_tab": True} if reused_tab else {}),
             "note": "the live reader, served by co ai on this computer; it can translate a page"}
 
 

@@ -45,6 +45,13 @@ def card(root, value: dict, spell, *, verbose: bool = False, show_private: bool 
         lines += [rem_look.section('Models'), *(row for line in value['models'] for row in _level_rows(line))]
     if value.get('schedule_runner'):
         lines += [rem_look.section('Schedule runner', value['schedule_runner'])]
+    if (window := value.get('schedule_window')) and (window.get('window_end') or verbose):
+        lines += [rem_look.section('Schedule window', window['summary'])]
+    if (up := value.get('auto_upgrade')) and up.get('outcome') in ('failed', 'upgraded'):
+        label = (style.warn(f"failed ({up.get('target') or 'unknown'}): {up.get('error', '')}")
+                 if up['outcome'] == 'failed'
+                 else f"upgraded {up.get('from', '')} -> {up.get('to', '')}" + (" · reader prewarmed" if up.get('prewarmed') else ""))
+        lines += [rem_look.section('Auto-upgrade', label)]
     if value.get('last_turn'):
         turn = value['last_turn']
         exit_code = f" · exit {turn['exit_code']}" if turn.get('exit_code') is not None else ''

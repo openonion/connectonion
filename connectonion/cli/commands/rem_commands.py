@@ -1972,7 +1972,8 @@ def make_rem_app(factory):
     def open_page(ctx: typer.Context,
                   launch: bool = typer.Option(True, "--launch/--no-launch"),
                   live: bool = typer.Option(False, "--live"),
-                  local: bool = typer.Option(False, "--local")):
+                  local: bool = typer.Option(False, "--local"),
+                  morning: bool = typer.Option(False, "--morning")):
         from ...rem import reader
 
         def operation(root):
@@ -1985,13 +1986,81 @@ def make_rem_app(factory):
                         if ctx.obj["default_root"] and root.is_dir() else None)
             owner = identity and identity["address"]
             # A first render, with no saved page to show, says how it is going (stderr).
-            if local:
+            if morning:
+                result = reader.open_morning(root, owner, launch=launch)
+            elif local:
                 result = reader.open_snapshot(root, launch=launch, say=rem_look.step)
             elif live:
                 result = reader.live_or_snapshot(root, owner, live=True, launch=launch, say=rem_look.step)
             else:
                 result = reader.local_or_snapshot(root, owner, launch=launch, say=rem_look.step)
             return result, ["status"] if launch else ["open"], bool(result.get("live_startup_failed"))
+        _handle(ctx, operation, ["doctor"])
+
+    @rem.command("upgrade", cls=V("co rem upgrade"))
+    def upgrade_cli(ctx: typer.Context,
+                    action: str = typer.Argument("status"),
+                    channel: str = typer.Option("", "--channel"),
+                    pin: str = typer.Option("", "--pin"),
+                    at: str = typer.Option("", "--time"),
+                    morning_time: str = typer.Option("", "--morning-time"),
+                    disable_morning: bool = typer.Option(False, "--disable-morning"),
+                    dry_run: bool = typer.Option(False, "--dry-run"),
+                    scheduled: bool = typer.Option(False, "--scheduled")):
+        from ...rem import auto_upgrade
+        from ...rem.files import RemError
+
+        def operation(root):
+            if action not in ("status", "run", "enable", "disable", "morning"):
+                raise RemError("Action must be status, run, enable, disable or morning")
+            if action == "status":
+                return {
+                    "install": auto_upgrade.detect_install_method(),
+                    "config": auto_upgrade.read_upgrade_config(),
+                    "last": auto_upgrade.read_upgrade_state(),
+                    "upgrade_job": auto_upgrade.DailyUpgradeScheduler().describe(),
+                    "morning_job": auto_upgrade.MorningReaderScheduler().describe(),
+                }, ["upgrade", "run", "--dry-run"]
+            if action == "run":
+                result = auto_upgrade.run_atomic_upgrade(root=root, dry_run=dry_run)
+                failed = result.get("outcome") == "failed" and not scheduled
+                return result, ["status"], failed
+            if action == "enable":
+                cfg = auto_upgrade.read_upgrade_config()
+                if channel:
+                    cfg["channel"] = channel
+                if pin:
+                    cfg["channel"] = "pinned"
+                    cfg["pinned_version"] = pin
+                if at:
+                    cfg["time"] = at
+                cfg["enabled"] = True
+                saved = auto_upgrade.write_upgrade_config(cfg)
+                hour, minute = map(int, saved["time"].split(":"))
+                job = auto_upgrade.DailyUpgradeScheduler().install(hour=hour, minute=minute)
+                return {"config": saved, "job": job}, ["upgrade", "status"]
+            if action == "disable":
+                cfg = auto_upgrade.read_upgrade_config()
+                cfg["enabled"] = False
+                saved = auto_upgrade.write_upgrade_config(cfg)
+                removed = auto_upgrade.DailyUpgradeScheduler().uninstall()
+                return {"config": saved, "removed": removed}, ["upgrade", "status"]
+            # action == "morning"
+            cfg = auto_upgrade.read_upgrade_config()
+            if disable_morning:
+                cfg["morning_open"] = {"enabled": False, "time": None, "source": "none"}
+                saved = auto_upgrade.write_upgrade_config(cfg)
+                removed = auto_upgrade.MorningReaderScheduler().uninstall()
+                return {"config": saved, "removed": removed}, ["upgrade", "status"]
+            chosen = morning_time or (cfg["morning_open"].get("time") or "")
+            if not chosen:
+                raise RemError("Pass --morning-time HH:MM to enable morning REM reader open, or --disable-morning to turn it off")
+            cfg["morning_open"] = {"enabled": True, "time": chosen, "source": "explicit"}
+            saved = auto_upgrade.write_upgrade_config(cfg)
+            hour, minute = map(int, chosen.split(":"))
+            job = auto_upgrade.MorningReaderScheduler().install(hour=hour, minute=minute)
+            return {"config": saved, "job": job}, ["upgrade", "status"]
+
         _handle(ctx, operation, ["doctor"])
 
     @rem.command("translate", cls=V("co rem translate"))
@@ -2306,15 +2375,25 @@ def make_rem_app(factory):
     @rem.command("status", cls=V("co rem status"))
     def inspect_status(ctx: typer.Context, verbose: bool = typer.Option(False, "--verbose"),
                        show_private: bool = typer.Option(False, "--show-private")):
+        from ...rem import auto_upgrade, codex_schedule
+        from ...rem.config import read_config
         from ...rem.service import status
         from .rem_status import status_next
 
         def operation(root):
             value = status(root, include_quota=True)
-            # Keep the CLI's JSON contract; translation coverage is drawn in
-            # the status card and consumed separately by the notebook reader.
+            if value.get("configured"):
+                value["schedule_window"] = codex_schedule.describe_schedule_window(read_config(root))
+            last_upgrade = auto_upgrade.read_upgrade_state()
+            if last_upgrade:
+                value["auto_upgrade"] = last_upgrade
+            # Keep the CLI's JSON contract; translation coverage, schedule window,
+            # and auto-upgrade status are drawn on the status card (and exposed
+            # directly via `co rem upgrade status --json`).
             if ctx.obj["json"]:
                 value.pop("translation_coverage", None)
+                value.pop("schedule_window", None)
+                value.pop("auto_upgrade", None)
             return value, status_next(value)
         _handle(ctx, operation, ["config"],
                 draw=_card(ctx, verbose, show_private))
@@ -2881,6 +2960,12 @@ def make_rem_app(factory):
                 check("schedule", slot is not None and not attention,
                       schedule["state"] if attention else f"next run {slot}" if slot else "not installed",
                       rem_fix=["logs"] if attention and slot else ["start"])
+            from ...rem import auto_upgrade
+            last_upgrade = auto_upgrade.read_upgrade_state()
+            if last_upgrade.get("outcome") == "failed":
+                check("auto-upgrade", False,
+                      f"last upgrade failed ({last_upgrade.get('target') or 'unknown'}): {last_upgrade.get('error', '')}",
+                      rem_fix=["upgrade", "run"])
             return checks, (rem_fixes[0] if rem_fixes else ["status"])
         from .rem_output import doctor_board
         _handle(ctx, operation, ["config"], draw=doctor_board)
@@ -3112,7 +3197,7 @@ def make_rem_app(factory):
         from ...rem.service import usage_report
         _handle(ctx, lambda root: (usage_report(root, days or None), ["logs"]), ["logs"])
 
-    order = ("init map collect investigate deepen enrich muse abstract decisions translate tag catchup open list show search start stop status exec next submit sources config logs morning doctor history sync "
+    order = ("init map collect investigate deepen enrich muse abstract decisions translate tag catchup open list show search start stop status exec next submit sources config upgrade logs morning doctor history sync "
              "advanced scan backfill map-skills stub merge person reflect reflections propose review capture "
              "unfinished people daily subscriptions subscribe unsubscribe route usage").split()
     rem.registered_commands.sort(key=lambda command: order.index(command.name))

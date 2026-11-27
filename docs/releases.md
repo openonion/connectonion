@@ -21,6 +21,8 @@ no `AsyncClient`, and every remote agent call crashed.
 
 ## Current preview
 
+Release candidate **1.9.7rc32** splits the 22k-line `reader.html` monolith into modular `connectonion/rem/reader_ui/` source files assembled in memory with zero build toolchain ([#3478](https://github.com/openonion/connectonion/pull/3478)), adds the opt-in five-start `overnight` REM schedule profile (`00:00`–`03:00` with a hard `03:30` continuation stop to keep daytime five-hour rolling quotas clean, [#3480](https://github.com/openonion/connectonion/issues/3480)), adds atomic staged `co rem upgrade` with post-upgrade HTML prewarming and resilient scheduled wrappers ([#3363](https://github.com/openonion/connectonion/issues/3363), [#3474](https://github.com/openonion/connectonion/issues/3474)), fixes REM's live Host onto dedicated preferred port `18765` with macOS tab reuse and safe daily-deduped `co rem open --morning`, and extends browser upgrade build polling to 180 seconds. See [1.9.7rc32 notes](releases/1.9.7rc32.md).
+
 Release candidate **1.9.7rc31** introduces REM's Cold Porcelain visual grounding, four pluggable skins (`Porcelain`, `Klein`, `Onion`, `Classic`), a three-column entity and entry reading layout, and 56 real-notebook fixes across `#view=open` batch triage, `cover`/`public` quote redaction, Evidence Drawer geometry, 1,300+ contact pagination, sub-120ms search, live 2D/3D graph theme sync, and cross-platform Keychain error handling ([#3470](https://github.com/openonion/connectonion/issues/3470)). See [1.9.7rc31 notes](releases/1.9.7rc31.md).
 
 Release candidate **1.9.7rc30** migrates REM to SQLite store v3 (persistent WAL, incremental vacuum, per-record upserts, external-content FTS5 with CJK search, and cached attachment/translation/research text) and serves a CLI-hosted loopback live reader with gzip compression, native PDF/image/table attachment previews via `/rem/attachment`, bounded idle refreshes, unclipped schedule hour labels, and mobile Today layout fixes ([#3469](https://github.com/openonion/connectonion/issues/3469), [#3468](https://github.com/openonion/connectonion/issues/3468), [#3467](https://github.com/openonion/connectonion/issues/3467)). See [1.9.7rc30 notes](releases/1.9.7rc30.md).
@@ -62,7 +64,7 @@ Before it, release candidate **1.9.7rc1**: a restricted claude-code Host from ho
 and `co asana`. See [1.9.7rc1 notes](releases/1.9.7rc1.md).
 
 ```bash
-python -m pip install --upgrade 'connectonion==1.9.7rc31'
+python -m pip install --upgrade 'connectonion==1.9.7rc32'
 ```
 
 ## Current release
