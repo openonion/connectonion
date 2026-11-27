@@ -244,7 +244,7 @@ function orgRows() {
   }
   return [...byName.values()].map(pages => {
     const r = [...pages].sort((a, b) => (b.people || []).length - (a.people || []).length)[0];
-    const people = [...new Map(pages.flatMap(page => orgMembership(page).all).map(p => [p.path, p])).values()];
+    const people = [...new Map(pages.flatMap(page => (typeof orgMembership === "function" ? orgMembership(page).all : orgMembers(page))).map(p => [p.path, p])).values()];
     // Last contact is the newest exchange with anyone there: the page's own date lags until REM re-reads it.
     return { r, pages, people, units: pages.flatMap(page => orgUnitNames(page)), last: [...pages.map(page => known(page).last), ...people.map(orgLast)].filter(Boolean).sort().at(-1) || "" };
   });
@@ -372,7 +372,7 @@ function orgTableChildren(d, seen = new Set()) {
   for (const r of d.pages.flatMap(r => (r.children || []).map(byPath).filter(Boolean)).filter(r => !next.has(r.path) && !personAsOrg(r)))
     if (!named.has(orgName(r).toLowerCase()) || orgHidden(r)) named.set(orgHidden(r) ? r.path : orgName(r).toLowerCase(), r);
   return [...named.values()].map(r => {
-    const people = orgMembership(r).all, last = [known(r).last, ...people.map(orgLast)].filter(Boolean).sort().at(-1) || "";
+    const people = typeof orgMembership === "function" ? orgMembership(r).all : orgMembers(r), last = [known(r).last, ...people.map(orgLast)].filter(Boolean).sort().at(-1) || "";
     const child = orgTableRow({r, pages: [r], people, last, units: orgUnitNames(r)});
     child.ancestors = [...(d.ancestors || []), orgName(d.r)];
     child.children = orgTableChildren(child, next);
@@ -500,7 +500,8 @@ function svgEl(tag, attrs = {}, children = []) {
 }
 
 function orgView(r) {
-  const membership = orgMembership(r), people = membership.all, { tree } = orgUnitTree(r, people, []);
+  const fallbackAll = typeof orgMembership === "function" ? null : orgMembers(r);
+  const membership = fallbackAll ? { all: fallbackAll, direct: fallbackAll, descendant: [], totalCount: fallbackAll.length, directCount: fallbackAll.length, descendantCount: 0 } : orgMembership(r), people = membership.all, { tree } = orgUnitTree(r, people, []);
   const v = { r, people, membership, tree };
   v.events = orgEvents(r, people);
   return v;
@@ -543,9 +544,11 @@ function stripStaleOrgPeopleCount(text) {
   return cleaned;
 }
 function orgOpening(v) {
-  const membership = v.membership || orgMembership(v.r);
-  const summary = stripStaleOrgPeopleCount(orgSummary(known(v.r).summary));
-  const relation = stripStaleOrgPeopleCount(orgRelation(v.r));
+  const fallbackPeople = v.people || [];
+  const membership = v.membership || (typeof orgMembership === "function" && v.r ? orgMembership(v.r) : { all: fallbackPeople, direct: fallbackPeople, descendant: [], totalCount: fallbackPeople.length, directCount: fallbackPeople.length, descendantCount: 0 });
+  const cleanStale = typeof stripStaleOrgPeopleCount === "function" ? stripStaleOrgPeopleCount : (s => s);
+  const summary = cleanStale(orgSummary(known(v.r).summary));
+  const relation = cleanStale(orgRelation(v.r));
   // Mapped organisations often have no History: their contacts still carry mail/index dates.
   const first = [...[v.r, ...v.people].flatMap(p => [facts(p).first, orgFact(p, "First contact")]),
     ...v.events.map(e => e.day)].filter(Boolean).sort()[0];

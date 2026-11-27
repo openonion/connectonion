@@ -1295,7 +1295,7 @@ function identityChoices(records, query, related = false) {
     const detailId = "identity-choice-" + index;
     const destination = related ? "#q=" + encodeURIComponent(query) + "&related=" + encodeURIComponent(r.path) : href(r);
     const details = identityDetails(r);
-    list.appendChild(el("li", {}, [el("div", { class: "t" }, [el("a", { href: destination, text: pageName(r), "aria-describedby": detailId }),
+    list.appendChild(el("li", {}, [el("div", { class: "t" }, [el("a", { href: destination, text: typeof pageName === "function" ? pageName(r) : r.title, "aria-describedby": detailId }),
       el("span", { class: "when", text: label(r.category) })]),
       el("dl", { class: "best-facts", id: details.length ? detailId : detailId + "-facts" }, details.flatMap(([name, value]) => [el("dt", { text: t(name) }), el("dd", { text: value })])),
       !details.length ? el("p", { class: "hit", id: detailId, text: t("No visible identifying details. Open the page to check its sources.") }) : null,
@@ -1493,7 +1493,7 @@ function bestMatch(r) {
   const open = f.open.find(o => !(privacyLevel === "public" && /[\[［](?:personal|sensitive)[\]］]/i.test(o.originalText || o.text || "")));
   const factCells = cells.filter(([, v]) => knownValue(v) && !(privacyLevel === "public" && /[\[［](?:personal|sensitive)[\]］]/i.test(v)));
   return el("section", { class: "best" }, [
-    el("div", { class: "best-head" }, [el("span", { class: "lead", text: t("Best match") }), el("a", { href: href(r), text: pageName(r) }), statusPill(r)]),
+    el("div", { class: "best-head" }, [el("span", { class: "lead", text: t("Best match") }), el("a", { href: href(r), text: typeof pageName === "function" ? pageName(r) : r.title }), statusPill(r)]),
     factCells.length ? el("dl", { class: "best-facts" }, factCells.flatMap(([name, v]) => [el("dt", { text: t(name) }), el("dd", { class: v ? "" : "none", text: v ? displayLine(v) : t("— not found") })])) : null,
     open && displayLine(open.text) ? el("div", { class: "best-open" }, [el("span", { class: "dir", text: t(DIRECTION_LABEL[open.dir]) }), el("span", { text: displayLine(open.text) })]) : null]);
 }

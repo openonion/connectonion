@@ -246,7 +246,8 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False, public_on
         for path in paths:
             raw = notebook.read(path)
             raw_texts[path] = raw
-            if not path.startswith("sessions/") and _privacy_kind(path, raw) == "private_page":
+            is_priv_topic = path.startswith("knowledge/") and bool(PRIVATE.search(raw.split("\n", 1)[0]))
+            if is_priv_topic or (public_only and not path.startswith("sessions/") and _privacy_kind(path, raw) == "private_page"):
                 private_targets.add(path)
     for record in paths:
         raw_text = raw_texts[record] if record in raw_texts else notebook.read(record)
@@ -269,10 +270,11 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False, public_on
                 text = "\n".join(cleaned_lines)
         updated = datetime.fromtimestamp(notebook.path(record).stat().st_mtime, timezone.utc)
         mask_no = _masked.number(raw_text) if private_topic else None
+        raw_priv_org = (record.startswith("orgs/") and _privacy_kind(record, raw_text) == "private_page")
         records.append({"path": record, "category": record.split("/")[0],
                         "title": _title(record, text) + (" (automated candidate)" if "- Correspondent classification: automated candidate;" in text else ""), "text": text,
                         "updated": updated.isoformat(timespec="seconds"),
-                        **({'private': True} if private_topic else {}),
+                        **({'private': True} if (private_topic or raw_priv_org) else {}),
                         **({'masked_number': mask_no} if mask_no else {})})
     # Held for review (#1844): still linkable, left off the contents until promoted.
     held = needs_review(root)
@@ -289,7 +291,10 @@ def _snapshot(root: Path, local: bool = False, *, today: bool = False, public_on
     record_paths = {record['path'] for record in records}
     person_names = frozenset(r["title"].casefold() for r in records if r["category"] == "people")
     for record in records:
+        was_private = bool(record.get("private"))
         record.update(organisation_fields(record, record_paths))
+        if was_private:
+            record["private"] = True
         if record['category'] == 'orgs':
             record['logo'] = organisation_logo(root, record)
         if record["category"] == "orgs" and BARE_DOMAIN.fullmatch(record["title"]):
