@@ -45,17 +45,10 @@ def _headers(keys) -> dict:
     left files nobody could find, so each identity signs in for itself.
     """
     if keys["address"] not in _tokens:
-        import requests
-
         from ..backend import backend_url
+        from .agent_auth import signed_agent_token
 
-        message = f"ConnectOnion-Auth-{keys['address']}-{int(time.time())}"
-        response = requests.post(f"{backend_url()}/api/v1/auth", timeout=30, json={
-            "public_key": keys["address"], "message": message,
-            "signature": keys["signing_key"].sign(message.encode()).signature.hex(),
-        })
-        response.raise_for_status()
-        _tokens[keys["address"]] = response.json()["token"]
+        _tokens[keys["address"]] = signed_agent_token(keys, backend_url())
     return {"Authorization": f"Bearer {_tokens[keys['address']]}"}
 
 

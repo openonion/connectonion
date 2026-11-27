@@ -57,6 +57,11 @@ co gmail --help         # the options and subcommands of one command
 holds them. In a terminal the same lines have the command column coloured:
 every `co` command follows one look, written down in [audit.md](audit.md#look-the-standard-co-holds-itself-to-1997).
 
+### Messages between agents
+
+Use [co agent](agent.md) to send encrypted text to an agent address, collect
+messages locally, and reply.
+
 ### Claude Code connector preview
 
 `co claude --cwd /path/to/project --model haiku` opens Claude's native
