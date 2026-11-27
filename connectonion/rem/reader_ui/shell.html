@@ -1,0 +1,71 @@
+<!doctype html>
+<!--
+  co rem reader. One self-contained file, no network, opened from file://.
+  Python embeds a snapshot of the notebook where the placeholder below sits;
+  everything after that is a client of the REM object and nothing else, so the
+  same client can be served by a local server or a site later without changes.
+  Note text is data: it reaches the DOM only through esc() or textContent.
+
+  Design. co rem is named for REM sleep: overnight it consolidates the day's
+  mail and coding sessions into pages. The home returns the changed context
+  after the obligations waiting on the owner. Processing details remain
+  available below the memory; a candidate connection stays a question until
+  the owner reviews it. Every page opens on what is still open.
+  - Palette: paper and ink, dawn indigo for changes, lamp amber for what
+    waits on you, and a yellow mark shared by a claim and its source span.
+  - Type: one system sans (SF / PingFang) for titles, prose and chrome, and
+    mono only for commands and paths.
+  - Fonts are local faces on purpose: a page of someone's private notes must
+    not phone a font host on open.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>co rem</title>
+<!-- The tab icon (D-132): the mark, drawn for 16 px and inline so nothing is fetched. The browser paints it
+     outside the page and by the system's theme, so it cannot read var(): its four colours are the
+     sheet's ink and paper, light and dark, written out (tests/unit/test_rem_reader_style_sheet.py). -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2034%2034%22%3E%3Cstyle%3E.f%7Bfill%3A%23121512%7D.sp%7Bfill%3Anone%3Bstroke%3A%23ffffff%3Bstroke-linecap%3Around%7D%40media%20(prefers-color-scheme%3Adark)%7B.f%7Bfill%3A%23eef0ed%7D.sp%7Bstroke%3A%230f110f%7D%7D%3C%2Fstyle%3E%3Cpath%20class%3D%22f%22%20d%3D%22M9%201h16a8%208%200%200%201%208%208v16a8%208%200%200%201-8%208H9a8%208%200%200%201-8-8V9a8%208%200%200%201%208-8z%22%2F%3E%3Cpath%20class%3D%22sp%22%20stroke-width%3D%223.4%22%20transform%3D%22translate(0%202.2)%22%20d%3D%22M5.82%2013.80A4.6%204.6%200%200%200%2013.78%2013.80M20.22%2013.80A4.6%204.6%200%200%200%2028.18%2013.80%22%2F%3E%3C%2Fsvg%3E">
+<style>
+/*__READER_STYLES__*/
+</style>
+
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="app">
+  <aside class="rail">
+    <a class="brand" href="#" aria-label="co rem, contents">
+      <svg class="mark" viewBox="0 0 34 34" aria-hidden="true"><path class="f" d="M10.5 1h13a9.5 9.5 0 0 1 9.5 9.5v13a9.5 9.5 0 0 1-9.5 9.5h-13A9.5 9.5 0 0 1 1 23.5v-13A9.5 9.5 0 0 1 10.5 1z"/><path class="sp" stroke-width="2.6" transform="translate(0 .6)" d="M6.16 15.25A4.8 4.8 0 0 0 14.64 15.25M19.36 15.25A4.8 4.8 0 0 0 27.84 15.25"/></svg>
+      <span class="name">co rem</span><span class="sub" id="brand-sub"></span></a>
+    <div class="rail-menu" id="rail-menu">
+      <nav id="nav" aria-label="Categories"></nav>
+      <div class="rail-end" id="rail-end"></div>
+    </div>
+  </aside>
+  <div class="stage">
+    <header class="top">
+      <div class="crumb" id="crumb"></div>
+      <div class="search">
+        <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        <input id="q" type="search" placeholder="Search" autocomplete="off" aria-label="Search the notebook">
+        <button id="q-clear" class="search-clear" type="button" aria-label="Clear search" title="Clear search">✕</button>
+        <button class="kbd" type="button" aria-label="Command palette">⌘K</button>
+      </div>
+      <div class="top-end"><span id="lang-progress" class="lang-progress" role="status" aria-live="polite" hidden></span><span class="privacy-level-host"><button id="privacy-level" class="privacy-level" type="button" aria-haspopup="menu" aria-expanded="false"></button></span><button id="lang-toggle" class="lang-toggle" type="button"></button><span class="display-menu-host"><button id="display-menu" class="display-menu" type="button" aria-haspopup="menu" aria-expanded="false"></button></span><button id="rem-state" class="sync" type="button" aria-haspopup="dialog" aria-controls="settings"></button></div>
+    </header>
+    <main id="main" tabindex="-1"></main>
+  </div>
+  <nav class="tabbar" id="tabbar" aria-label="Tabs"><button class="nav-toggle" aria-expanded="false" aria-controls="rail-menu" type="button">Menu</button></nav>
+</div>
+<dialog id="settings" class="n3-sheet reader-settings" aria-labelledby="settings-title">
+  <div class="sheet-head"><h2 id="settings-title">Settings</h2><button type="button" class="ibtn settings-close" aria-label="Close"></button></div>
+  <div class="foot" id="foot"></div>
+</dialog>
+<script id="graph-d3">/*__D3__*/</script>
+<script>
+/*__READER_SCRIPTS__*/
+</script>
+<script id="rem-detail" type="application/json">/*__REM_DETAIL__*/</script>
+</body>
+</html>

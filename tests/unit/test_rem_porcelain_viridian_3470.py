@@ -99,7 +99,7 @@ def test_3436_task_status_and_result_respect_privacy_levels():
     template = rem_reader.TEMPLATE.read_text(encoding="utf-8")
     script = r"""
 const fs = require('fs');
-const html = fs.readFileSync(process.argv[1], 'utf8');
+const html = fs.readFileSync(0, 'utf8');
 const slice = name => {
   const start = html.indexOf('function ' + name + '(');
   let depth = 0, i = html.indexOf('{', start);
@@ -148,7 +148,8 @@ const allStatus = taskStatus(entry.task, entry);
 console.log(JSON.stringify({ pubStatus, pubNode, pubRes, covStatus, covNode, hasCovReply: (covRes.kids || []).some(k => k.tag === 'textarea'), allStatus }));
 """
     proc = subprocess.run(
-        ["node", "-e", script, str(rem_reader.TEMPLATE)],
+        ["node", "-e", script],
+        input=template,
         capture_output=True,
         text=True,
         check=True,

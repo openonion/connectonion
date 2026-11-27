@@ -1,0 +1,391 @@
+  /* Graph and topics (#view=graph, #c=knowledge, a topic page, the local graph in rails).
+     Bauhaus lightness: ink geometry on paper, shape = kind, four type sizes, two weights, no boxes in boxes. */
+  .gx {
+    color: var(--ink); font: var(--w-regular) var(--s-body)/22px var(--font); font-feature-settings: "tnum" 1;
+  }
+  .gx a { color: inherit; text-decoration: none; }
+  .gx h1, .gx h2, .gx h3, .gx h4, .gx p { margin: 0; }
+  .gx button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  .gx .gx-glyph { flex: none; display: block; }
+  .gx-statement { font: var(--w-bold) var(--s-head)/60px var(--font); letter-spacing: -.035em; }
+  .gx-lede { font-size: var(--s-body); line-height: 27px; color: var(--grey); margin-top: 12px; max-width: 640px; }
+  .gx-quiet, .gx-quiet-line { color: var(--grey); font-size: var(--s-meta); line-height: 18px; }
+  .gx-quiet-line { margin-top: 16px; }
+  .gx-quiet-line a, .gx-link { color: var(--grey); font-size: var(--s-body); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 4px; }
+  .gx-link { display: inline-block; margin-top: 16px; }
+  .gx-link:hover, .gx-quiet-line a:hover { color: var(--ink); text-decoration-color: currentColor; }
+
+  /* ---- the settled map (#3085): the heading, one sentence that is also the key, then the map down to the window's
+     foot with its quiet line under it. The heading sits where Entries' heading sits, so the switch does not jump. ---- */
+  #main:has(> .gx-map), #main:has(> .gx-topics) { padding: 0; max-width: none; }
+  .gx-map { position: relative; display: flex; flex-direction: column; padding: 4px 40px 0; overflow: hidden; background: var(--paper); }
+  .gx-stage { position: relative; flex: 1; min-height: 0; margin: 0 -40px; }
+  .gx-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  .gx-canvas:focus-visible { outline: 1.5px solid var(--ink); outline-offset: -2px; }
+  .gx-canvas[hidden] { display: none; }
+  /* The 3D map (#3309) fills the stage left of the panel; names ride above it, never catching the pointer. */
+  .gx-3d, .gx-3d-names { position: absolute; top: 0; bottom: 0; left: 0; }
+  .gx-3d { overflow: hidden; touch-action: none; }
+  .gx-3d:focus-visible { outline: 1.5px solid var(--ink); outline-offset: -2px; }
+  .gx-3d-names { pointer-events: none; overflow: hidden; }
+  .gx-3d-name { position: absolute; left: 0; top: 0; padding: 1px 6px; margin: -10px 0 0 10px; border-radius: var(--radius); background: var(--paper); color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); white-space: nowrap; }
+  .gx-3d-name.hub { font-weight: var(--w-bold); }
+  .gx-3d-name > span { display: block; }
+  /* In 3D a kind is a colour: the legend line and each row of the side list carry the same dot as the map. */
+  .gx-dot { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: var(--r-pill); background: var(--kind-notes); }
+  .gx-dot[data-kind="knowledge"] { background: var(--green); }
+  .gx-dot[data-kind="people"] { background: var(--kind-people); }
+  .gx-dot[data-kind="orgs"] { background: var(--kind-orgs); }
+  .gx-dot[data-kind="projects"] { background: var(--kind-projects); }
+  .gx-dot.private { box-sizing: border-box; background: transparent; border: 1.5px solid var(--grey); }
+  .gx-key3d { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 6px 0 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .gx-key3d > span { display: inline-flex; align-items: center; gap: 6px; }
+  .gx-map:not([data-space="3d"]) .gx-key3d { display: none; }
+  .gx-item .gx-dot { margin-top: 5px; }
+  .gx-key .gx-dot { margin: 0 6px 0 2px; }
+  .gx-loading { margin: 48px 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); }
+  .gx-dims { display: flex; gap: 2px; align-self: center; }
+  .gx-dims button { min-width: 36px; height: 30px; padding: 0 8px; color: var(--grey) !important; font: var(--w-regular) var(--s-ui) var(--font) !important; border-radius: var(--radius) !important; }
+  .gx-dims button[aria-pressed="true"] { background: var(--rule) !important; color: var(--ink) !important; }
+  .gx-top { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 48px; }
+  .gx-says { max-width: 880px; margin: 0 0 12px !important; font: var(--w-regular) var(--s-body)/var(--lh-read) var(--font); color: var(--ink); }
+  .gx-key { white-space: nowrap; font-weight: var(--w-bold); }
+  .gx-busiest { display: block; color: var(--grey); }
+  .gx-says .gx-glyph { display: inline-block; vertical-align: -1px; margin-right: 5px; }
+  .gx-says button { font-weight: var(--w-bold) !important; text-decoration: underline !important; text-decoration-color: var(--rule) !important; text-underline-offset: 4px; text-align: left; }
+  .gx-says button:hover { text-decoration-color: currentColor !important; }
+  .gx-bar { display: flex; align-items: flex-end; gap: 32px; flex-wrap: wrap; width: fit-content; margin-bottom: 12px; }
+  .gx-find { position: relative; width: 320px; }
+  .gx-search { width: 100%; height: 36px; border: 0; border-bottom: 1.5px solid var(--ink); background: transparent; color: var(--ink); font: var(--w-regular) var(--s-body) var(--font); padding: 0 28px 0 0; border-radius: 0; }
+  .gx-search::placeholder { color: var(--grey); }
+  .gx-search:focus { outline: none; border-bottom-color: var(--ink); }
+  .gx-search:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .gx-search::-webkit-search-cancel-button { display: none; }
+  .gx-clear { position: absolute; right: 2px; top: 8px; width: 20px; height: 20px; color: var(--grey) !important; font-size: var(--s-meta) !important; }
+  .gx-results { position: absolute; left: 0; right: 0; top: 42px; margin: 0; padding: 6px; list-style: none; background: var(--paper); border-radius: var(--radius); outline: var(--hair) solid var(--rule); z-index: 5; }
+  .gx-results li { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: var(--radius); cursor: pointer; }
+  .gx-results li:hover { background: var(--rule); }
+  .gx-results small { margin-left: auto; color: var(--grey); font-size: var(--s-meta); }
+  .gx-tabs { display: flex; gap: 20px; }
+  .gx-tabs button { height: 36px; color: var(--grey) !important; border-bottom: 1.5px solid transparent !important; }
+  .gx-tabs button[aria-selected="true"] { color: var(--ink) !important; font-weight: var(--w-bold); border-bottom-color: var(--ink) !important; }
+  .gx-foot { display: flex; align-items: center; gap: 16px; min-height: 44px; }
+  .gx-legend { flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 18px; font-size: var(--s-meta); line-height: 18px; color: var(--grey); }
+  .gx-zoom { display: flex; gap: 2px; }
+  .gx-zoom button { width: 32px; height: 32px; color: var(--grey) !important; font-size: var(--s-body) !important; border-radius: var(--radius) !important; }
+  .gx-zoom button:hover { background: var(--rule) !important; color: var(--ink) !important; }
+  .gx-tip { position: absolute; pointer-events: none; padding: 4px 9px; border-radius: var(--radius); background: var(--ink); color: var(--paper); font-size: var(--s-meta); white-space: nowrap; }
+  .gx-tip[hidden] { display: none; }
+  .gx-empty { padding: 200px 40px; color: var(--grey); }
+
+  /* The panel is a transient layer, so it may be a card: the one lifted object on the map. */
+  .gx-panel { position: absolute; right: 24px; width: 348px; display: flex; flex-direction: column; background: var(--paper); border-radius: var(--radius); outline: var(--hair) solid var(--rule); overflow: hidden; z-index: 3; }
+  .gx-panel-head { padding: 22px 22px 18px; border-bottom: 1px solid var(--rule); }
+  .gx-kicker { display: flex; align-items: center; gap: 8px; color: var(--grey); font-size: var(--s-meta); }
+  .gx-panel h2 { font: var(--w-bold) var(--s-body)/27px var(--font); margin-top: 6px; overflow-wrap: anywhere; }
+  .gx-panel-head p { color: var(--grey); margin-top: 4px; }
+  .gx-panel-head .gx-summary { color: var(--ink); margin-top: 8px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .gx-counts { display: flex; gap: 18px; margin-top: 12px; color: var(--grey); font-size: var(--s-meta); line-height: 18px; }
+  .gx-counts b { display: block; color: var(--ink); font-size: var(--s-body); line-height: 24px; }
+  .gx-open { display: flex; align-items: center; justify-content: center; height: 40px; margin-top: 16px; border-radius: var(--radius); background: var(--paper); border: var(--hair) solid var(--rule); color: var(--ink) !important; font-weight: var(--w-bold); transition: background var(--t-press) var(--ease-out); }
+  .gx-open:hover { background: var(--well); }
+  .gx-depth { display: flex; align-items: center; gap: 12px; margin-top: 14px; font-size: var(--s-meta); color: var(--grey); }
+  .gx-depth button { color: var(--grey) !important; border-bottom: 1.5px solid transparent !important; line-height: 20px; }
+  .gx-depth button[aria-pressed="true"] { color: var(--ink) !important; font-weight: var(--w-bold); border-bottom-color: var(--ink) !important; }
+  .gx-depth .gx-quiet { margin-left: auto; }
+  .gx-panel-body { flex: 1; overflow: auto; padding: 4px 12px 18px; }
+  .gx-panel-body h3 { display: flex; font-size: var(--s-meta); font-weight: var(--w-bold); color: var(--grey); padding: 16px 10px 6px; }
+  .gx-panel-body h3 span { margin-left: auto; font-weight: var(--w-regular); }
+  .gx-item { display: flex !important; align-items: flex-start; gap: 12px; width: 100%; text-align: left; padding: 7px 10px !important; border-radius: var(--radius) !important; min-height: 44px; }
+  /* #3163: on a phone every control is a 44px hit, made with padding, not bigger type. Links inside a sentence and
+     source marks stay inline (they are words in the text, as WCAG's inline exception allows). */
+  @media (max-width: 640px) {
+    #main :is(button, summary, a.chip, button.chip, .btn-quiet, .btn-act, .ibtn, .r4-btn, .pc-copy, .pc-more, .tl-more, .page-crumb):not(.cite) {
+      min-height: 44px; box-sizing: border-box; }
+    #main :is(.btn-quiet, .page-crumb, .dek-org, .dek-unit) { display: inline-flex; align-items: center; }
+    /* A text action's hit grows into the space around it, not the layout: 44px tall, but it takes the line it had, so
+       Today's Send stays on the first screen. */
+    #main :is(.btn-quiet, .link-btn, .page-crumb, .thread .who a, .pc-v a, .row-quote > summary):not(:where(.draft-triage *)) { margin-block: -8px; }
+    #main .dek > :is(a, span) { min-height: 44px; display: inline-flex; align-items: center; }
+    #main .ibtn { min-width: 44px; }
+    .open-chips .chip { min-height: 44px; }
+    #main .pc-copy { display: flex; align-items: center; }
+    /* A short word ("忽略", "看", "人物") still gets a 44px-wide target; the word stays where it was. */
+    #main :is(.btn-quiet, .link-btn, .page-crumb, .pc-v a) { min-width: 44px; justify-content: center; }
+    /* The meta line's Today link stays a word in its line; its hit grows into the line's own space. */
+    #main .hero-meta .r4-today { display: inline; min-height: 0; padding: 14px 0; margin: -14px 0 -14px 16px; }
+    #main :is(.thread .who a, .pc-v a, .pair-cell) { display: inline-flex; align-items: center; min-height: 44px; }
+  }
+  .gx .gx-unlinked { min-height: 44px; padding: 0 2px; border: 0; background: none; color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; cursor: pointer; }
+  .gx-unlinked-list h3 { margin: 16px 0 4px; color: var(--grey); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); }
+  .gx-unlinked-list ul { margin: 0; padding: 0; list-style: none; }
+  .gx-unlinked-list li { padding: 0; }
+  .gx-unlinked-list li a { display: flex; align-items: center; min-height: 44px; color: var(--ink); }
+  .gx-item:hover { background: var(--rule) !important; }
+  .gx-item-body { min-width: 0; display: flex; flex-direction: column; }
+  .gx-item > .gx-glyph { margin-top: 4px; }
+  .gx-item b { font-weight: var(--w-regular); overflow-wrap: anywhere; }
+  .gx-item small { font-size: var(--s-meta); line-height: 16px; color: var(--grey); overflow-wrap: anywhere; }
+  .gx-more { display: block; color: var(--grey) !important; font-size: var(--s-meta) !important; padding: 4px 10px 4px 36px !important; text-align: left; }
+
+  /* ---- topics: the list and the record ---- */
+  .gx-topic { max-width: 1040px; margin: 0 auto; }
+  .gx-topics { padding: 4px 40px 64px; }
+  .gx-topics > :not(.knowledge-head) { max-width: 1040px; }
+  .gx-rows, .gx-link-rows, .gx-rail-list { list-style: none; margin: 0; padding: 0; }
+  .gx-rows { border-top: 1.5px solid var(--ink); }
+  .gx-rows li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; min-height: 56px; padding: 10px 0; border-bottom: 1px solid var(--rule); }
+  .gx-rows .gx-entry { flex: 1 1 260px; min-width: 0; display: flex; align-items: center; gap: 16px; }
+  .gx-rows .gx-entry:hover b { text-decoration: underline; text-underline-offset: 4px; }
+  .gx-entry b, .gx-entry small { overflow-wrap: anywhere; }
+  .gx-entry-links { max-width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .gx-entry-links a { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border-radius: var(--r-pill); background: var(--well); font-size: var(--s-meta); }
+  .gx-entry-links a:hover { color: var(--ink); text-decoration: underline; }
+  .knowledge-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; width: fit-content; }
+  .knowledge-head h1 { margin: 0; }
+  .knowledge-switch .theme-btn { display: inline-flex; align-items: center; min-height: 32px; text-decoration: none; }
+  .gx-panel-guide { padding-top: 10px; }
+  .gx-rule { border: 0; border-top: 1px solid var(--rule); margin: 10px; }
+  .gx-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .gx-row-body b { font-weight: var(--w-bold); }
+  .gx-row-body small, .gx-row-meta { color: var(--grey); font-size: var(--s-meta); line-height: 18px; }
+  .gx-row-meta { white-space: nowrap; }
+  .gx-crumb { color: var(--grey) !important; font-size: var(--s-meta); }
+  .gx-topic-name { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
+  .gx-topic-name h1 { overflow-wrap: anywhere; }
+  .gx-stats { display: flex; flex-wrap: wrap; gap: 12px 40px; margin-top: 28px; padding-top: 14px; border-top: 1.5px solid var(--ink); }
+  .gx-stats div { display: flex; flex-direction: column; }
+  .gx-stats b { font: var(--w-bold) var(--s-body)/27px var(--font); }
+  .gx-stats span { color: var(--grey); font-size: var(--s-meta); line-height: 18px; }
+  .gx-grid { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 56px; margin-top: 40px; }
+  .gx-sec + .gx-sec { margin-top: 40px; }
+  .gx-sec > h2 { display: flex; align-items: baseline; gap: 10px; font: var(--w-bold) var(--s-body)/27px var(--font); padding-bottom: 8px; border-bottom: 1.5px solid var(--ink); }
+  .gx-sec > h2 span { color: var(--grey); font: var(--w-regular) var(--s-meta) var(--font); }
+  .gx-group h3 { display: flex; font-size: var(--s-meta); line-height: 18px; font-weight: var(--w-bold); color: var(--grey); margin-top: 20px; }
+  .gx-group h3 span { margin-left: auto; font-weight: var(--w-regular); }
+  .gx-link-row { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 14px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+  .gx-link-row > .gx-glyph { margin-top: 4px; }
+  .gx-row-name { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+  /* A linked page's name wraps: a knowledge page is often named by a whole question, and kept on one line it
+     widened the page to 402px on a 390px phone. Its count beside it stays on one line and truncates. */
+  .gx-row-name a { font-weight: var(--w-bold); min-width: 0; overflow-wrap: anywhere; }
+  .gx-row-name { flex-wrap: wrap; }
+  .gx-row-name a:hover { text-decoration: underline; text-underline-offset: 4px; }
+  .gx-row-name small { color: var(--grey); font-size: var(--s-meta); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gx-link-row p { color: var(--grey); margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .gx-said b { color: var(--ink); font-weight: var(--w-bold); }
+  .gx-link-row time { color: var(--grey); font-size: var(--s-meta); line-height: 22px; white-space: nowrap; }
+  .gx-group .gx-more { padding: 10px 0 !important; }
+  .gx-group .gx-more:hover { color: var(--ink) !important; }
+  .gx-time { display: block; width: 100%; height: 36px; margin-top: 16px; overflow: visible; }
+  .gx-time line { stroke: var(--ink); stroke-width: 1.5; }
+  .gx-time circle { fill: var(--ink); fill-opacity: .55; }
+  .gx-time-ends { display: flex; justify-content: space-between; gap: 16px; color: var(--grey); font-size: var(--s-meta); line-height: 18px; margin-top: 4px; }
+  .gx-time-ends span:nth-child(2) { color: var(--grey); text-align: center; }
+  .gx-prose { margin-top: 12px; color: var(--grey); }
+  .gx-prose ul { margin: 0; padding-left: 18px; }
+  /* ---- an entry: knowledge, a decision, a principle, set like a reference-book article (#3097) ---- */
+  .entry.gx-topic { max-width: 880px; }
+  .entry .gx-topic-name { align-items: flex-start; gap: var(--u3); }
+  .entry .gx-topic-name .gx-glyph { flex: none; margin-top: 10px; }
+  .entry .gx-statement { font: var(--w-bold) var(--s-display)/var(--lh-tight) var(--font); letter-spacing: var(--track-display); text-wrap: balance; }
+  .entry :is(.entry-aka, .entry-meta, .entry-counts, .gx-lede) { margin-top: var(--u2); color: var(--grey); font-size: var(--s-ui); line-height: var(--lh-body); }
+  .entry .entry-aka { margin-top: var(--u3); }
+  .entry-meta a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+  .entry-meta a:hover { color: var(--ink); }
+  .entry .gx-grid { grid-template-columns: minmax(0, var(--measure-read)) 260px; justify-content: space-between; gap: var(--u5); margin-top: var(--u5); font-size: var(--s-body); }
+  .entry .gx-grid.no-rail { grid-template-columns: minmax(0, var(--measure-read)); }
+  /* The text: body size, a line-height that suits Chinese, about 34 Chinese or 70 Latin characters a line. */
+  .entry-text.note { max-width: none; font: var(--s-body)/var(--lh-read) var(--font); color: var(--ink); }
+  .entry-text p { margin: 0 0 var(--u3); }
+  .entry-text > .entry-sec > :last-child { margin-bottom: 0; }
+  /* A heading belongs to what follows it: five times the room above that it has below. */
+  .entry-sec > h2 { margin: var(--u5) 0 var(--u2); font: var(--w-bold) var(--s-head)/var(--lh-head) var(--font); letter-spacing: -.02em; text-wrap: balance; scroll-margin-top: var(--u4); }
+  .entry-sec:first-child > h2:first-child { margin-top: 0; }
+  .entry-text h3 { margin: var(--u4) 0 var(--u1); font: var(--w-bold) var(--s-body)/var(--lh-body) var(--font); }
+  .entry-text :is(ul, ol) { margin: 0 0 var(--u3); padding-left: 1.3em; }
+  .entry-text li { margin: 6px 0; padding-left: 2px; }
+  /* The owner's own words: a quiet ruled block, in ink. */
+  .entry-text blockquote { margin: calc(-1 * var(--u2)) 0 var(--u3); padding: 2px 0 2px var(--u3); border-left: var(--rule-heavy) solid var(--ink); background: none; font: inherit; }
+  .entry-text blockquote p { margin: 0; }
+  .entry-text blockquote .said { text-decoration: none; background: none; }
+  .entry-text :not(p) + blockquote, .entry-text blockquote:first-child { margin-top: 0; }
+  /* A citation is a raised number; its tooltip says the source in words. */
+  .entry .cite { top: 0; border: 0; background: none; padding: 0 1px; margin: 0 0 0 1px; color: var(--grey); }
+  .entry .cite :is(.cite-full, .cite-short) { display: none; }
+  .entry .cite .cite-number { display: inline; font: var(--w-regular) var(--s-ui)/var(--lh-tight) var(--font); vertical-align: super; font-variant-numeric: tabular-nums; }
+  .entry .cite .cite-number::before { content: "["; color: var(--grey); }
+  .entry .cite .cite-number::after { content: "]"; color: var(--grey); }
+  .entry .cite:hover, .entry .cite:focus-visible { color: var(--ink); background: none; }
+  .entry .cite.flash, .entry-sources li.flash { background: var(--well); border-radius: var(--r-cell); outline: var(--u1) solid var(--well); }
+  /* Drawn from: the notebook pages a section rests on. An inset, so it is never read as evidence. */
+  .entry-drawn { display: block; margin: var(--u3) 0 0; padding: 12px var(--u3) 10px; border-radius: var(--radius); background: var(--well); font-size: var(--s-ui); line-height: var(--lh-body); }
+  .entry-label { display: block; margin-bottom: var(--u1); color: var(--grey); font-size: var(--s-ui); line-height: var(--lh-ui); }
+  .entry-text .entry-drawn ul { list-style: none; margin: 0; padding: 0; }
+  .entry-text .entry-drawn li { margin: 0; padding: 3px 0; color: var(--grey); }
+  .entry-drawn a { color: var(--ink); font-weight: var(--w-bold); text-decoration: underline; text-decoration-color: var(--pencil); text-underline-offset: 3px; }
+  .entry-drawn a:hover { text-decoration-color: var(--ink); }
+  .entry .gx-main > .gx-sec, .entry-missing { margin-top: var(--u5); }
+  .entry-missing { color: var(--grey); font-size: var(--s-ui); line-height: var(--lh-body); }
+  /* Sources: once, last, set small like the notes at the end of an article. */
+  .entry-sources { margin-top: var(--u6); padding-top: 12px; border-top: 1.5px solid var(--ink); }
+  .entry-sources-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--u3); }
+  .entry-sources h2 { font: var(--w-bold) var(--s-body)/var(--lh-head) var(--font); scroll-margin-top: var(--u4); }
+  .entry .entry-ids { min-height: 32px; padding: 0; border: 0; background: none; color: var(--grey); font: var(--s-ui)/var(--lh-ui) var(--font); cursor: pointer; }
+  .entry .entry-ids:hover { color: var(--ink); text-decoration: underline; }
+  .entry-sources ol { list-style: none; margin: var(--u1) 0 0; padding: 0; color: var(--grey); font-size: var(--s-ui); line-height: var(--lh-body); }
+  .entry-sources li { display: grid; grid-template-columns: 28px minmax(0, 1fr); padding: 5px 0; scroll-margin-top: var(--u4); }
+  .entry-n { font-variant-numeric: tabular-nums; }
+  .entry-what { color: var(--ink); }
+  .entry-what a:not(.entry-back):hover { text-decoration: underline; text-underline-offset: 3px; }
+  .entry-back { margin-left: var(--u2); color: var(--grey); text-decoration: none; }
+  .entry-back:hover { color: var(--ink); }
+  .entry-id { display: none; grid-column: 2; padding: 0; background: none; color: var(--grey); font: var(--s-ui)/var(--lh-ui) var(--mono); overflow-wrap: anywhere; }
+  .entry-sources.show-ids .entry-id { display: block; }
+  .entry .page-foot { max-width: none; margin-top: var(--u5); }
+  .entry .page-foot :is(.btn-action, .eyebrow-path) { font: var(--s-ui) var(--font); color: var(--grey); background: var(--paper); border: 1px solid var(--rule); padding: 4px 10px; overflow-wrap: anywhere; text-align: left; }
+  .entry .page-foot :is(.btn-action, .eyebrow-path):hover { color: var(--ink); }
+  @media (max-width: 720px) {
+    .entry .gx-statement { font-size: var(--s-head); line-height: var(--lh-head); letter-spacing: -.02em; }
+    .entry .gx-topic-name .gx-glyph { margin-top: 4px; }
+    .entry-sec > h2 { font-size: var(--s-body); line-height: var(--lh-body); letter-spacing: 0; }
+    .entry .gx-grid, .entry .gx-grid.no-rail { grid-template-columns: minmax(0, 1fr); margin-top: var(--u4); }
+  }
+  .gx-rail { display: flex; flex-direction: column; gap: 0; }
+  .gx-rail h4, .gx-attach h4 { font-size: var(--s-ui); line-height: 18px; font-weight: var(--w-bold); color: var(--grey); margin: 28px 0 8px; }
+  .gx-rail > :first-child h4, .gx-attach > :first-child h4 { margin-top: 0; }
+  .gx-rail-list li { display: flex; flex-direction: column; padding: 6px 0; border-bottom: 1px solid var(--rule); }
+  .gx-rail-list a { display: flex; align-items: center; gap: 8px; }
+  .gx-rail-list small { color: var(--grey); font-size: var(--s-meta); line-height: 18px; padding-left: 20px; }
+  .gx-kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 0; font-size: var(--s-meta); line-height: 18px; }
+  .gx-kv dt { color: var(--grey); }
+  .gx-kv dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+
+  /* ---- the local graph: in a topic's rail, and above a person, organisation or project rail ---- */
+  .gx-attach { margin: 28px 0 0; }
+  .gx .gx-local-svg { display: block; width: 100%; max-width: 260px; height: auto; overflow: visible; }
+  .gx-attach.gx-inline { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 40px; max-width: 1000px; margin: 40px 0; padding-top: 12px; border-top: 1.5px solid var(--ink); }
+  .gx-attach.gx-inline .gx-local { width: 260px; }
+  .gx-attach.gx-inline .gx-topic-line { flex: 1; min-width: 200px; margin: 0 0 24px !important; font-size: var(--s-body); line-height: 22px; }
+  .gx-local-lines line { stroke: var(--rule); stroke-width: 1; }
+  .gx-local-lines line.topic { stroke: var(--pencil); }
+  .gx-local-svg text { font: var(--w-regular) var(--s-meta) var(--font); fill: var(--grey); paint-order: stroke; stroke: var(--paper); stroke-width: 3px; }
+  .gx-local-svg text.centre { font-weight: var(--w-bold); fill: var(--ink); font-size: var(--s-meta); }
+  .gx-local-svg a:hover > :not(title) { opacity: .6; }
+  .gx-local-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: var(--s-ui); line-height: 18px; color: var(--grey); }
+  .gx-local-foot a { color: var(--grey) !important; text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .gx-topic-line { margin-top: 10px !important; font-size: var(--s-meta); line-height: 18px; color: var(--grey); }
+  .gx-topic-line a { color: var(--ink) !important; font-weight: var(--w-bold); text-decoration: none !important; }
+
+  @media (prefers-reduced-motion: reduce) { .gx * { transition: none !important; } }
+  @media (max-width: 720px) {
+    .gx-statement { font-size: var(--s-head); line-height: 40px; }
+    /* A phone draws the entries and what they link (the map says so in its sentence); the filters have nothing to
+       filter, one finger scrolls the page and two zoom the map, and the lists scroll with the page, not inside it. */
+    .gx-map { overflow: visible; padding: 4px 16px 0; }
+    .gx-panel[hidden] { display: none; }
+    .gx-topics { padding: 4px 16px 40px; }
+    .gx-says { font-size: var(--s-body); line-height: var(--lh-body); }
+    .gx-bar { width: 100%; }
+    .gx-find { width: 100%; }
+    .gx-tabs, .gx-foot { display: none; }
+    .gx-stage { flex: none; height: 320px; margin: 0 -16px; }
+    .gx-canvas { touch-action: pan-y; }
+    .gx-panel { position: static; width: auto; margin: 4px -4px 0; max-height: none !important; overflow: visible; }
+    .gx-panel-head { display: flex; flex-direction: column; padding: 14px 18px 14px; }
+    .gx-panel-head .gx-open { order: 1; height: 46px; margin-top: 12px; }
+    .gx-panel-head .gx-summary, .gx-panel-head .gx-counts { order: 2; }
+    .gx-panel-head .gx-summary { margin-top: 12px; }
+    .gx-counts { margin-top: 10px; }
+    .gx-depth { display: none; }
+    .gx-panel-body { overflow: visible; }
+    .gx-item { min-height: 44px; }
+    .gx-grid { grid-template-columns: 1fr; gap: 40px; margin-top: 32px; }
+    .gx-stats { gap: 10px 24px; }
+    .gx-stats div:nth-child(n+4) { display: none; }
+    .gx-link-row { grid-template-columns: 14px minmax(0, 1fr); }
+    .gx-link-row time { display: none; }
+    .gx-row-name { flex-wrap: wrap; }
+    .gx-rows .gx-entry { flex-basis: 100%; }
+  }
+
+  /* ---- #3306 & #3231: True 3-Column Reading Layout (Left Rail | 740px Grounded Memory Sheet | 260px Far-Right Sticky Page Nav) ---- */
+  main.reading { max-width: calc(740px + 80px); margin: 16px auto 48px; padding: 28px 36px 56px; background: var(--paper); border: var(--hair) solid var(--rule); border-radius: var(--r-card); box-shadow: var(--e1); }
+  /* On a phone the Investigate menu hangs from the whole Investigate block, so it stays on the screen. */
+  @media (max-width: 640px) {
+    main.reading { max-width: none; margin: 0; padding: 10px 16px calc(62px + 14px + 24px + env(safe-area-inset-bottom, 0px)); border: 0; border-radius: 0; box-shadow: none; }
+    main.reading :is(.hero-acts, .ov-say, .page-head) { position: relative; }
+    main.reading :is(.inv, .inv-more) { position: static; }
+    main.reading .inv :is(.inv-menu, .inv-changed) { left: 0; right: auto; width: min(300px, 100%); max-width: 100%; }
+    main.reading :is(.person-head > .page-crumb, .ov-crumb, .gx-crumb) { display: none; }
+  }
+  .inv-more:not([open]) > .inv-menu { display: none; }
+  main.reading :is(.note, .entry .entry-text, .entry.gx-topic) { max-width: none; }
+  main.reading .entry .gx-grid { grid-template-columns: minmax(0, 1fr); }
+  main.reading .n3-person .dek { word-break: keep-all; overflow-wrap: break-word; }
+  /* Compact <1280px collapsible "On this page · ..." bar under the header */
+  .jump { margin: 12px 0 18px; border: var(--hair) solid var(--rule); border-radius: var(--radius); background: var(--well); }
+  .jump > summary { cursor: pointer; list-style: none; padding: 8px 12px; color: var(--grey); font: var(--w-bold) var(--s-ui)/var(--lh-ui) var(--font); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .jump > summary::-webkit-details-marker { display: none; }
+  .jump > summary::after { content: "▾"; color: var(--grey); }
+  .jump[open] > summary::after { content: "▴"; }
+  .jump ul { list-style: none; margin: 0; padding: 4px 12px 10px; border-top: var(--hair) solid var(--rule); display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .jump a { color: var(--ink); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: none; }
+  .jump a:hover { text-decoration: underline; }
+  /* Far-right sticky quick-browse rail (<aside class="page-nav">) */
+  .page-nav { display: flex; flex-direction: column; gap: 20px; font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); color: var(--ink); }
+  .page-nav .panel { margin: 0; padding: 14px 0 0; border-top: var(--hair) solid var(--rule); font-size: var(--s-ui); }
+  .page-nav > :first-child.panel, .page-nav > :first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+  .page-nav .toc { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; border-left: var(--hair) solid var(--rule); }
+  .page-nav .toc li { margin: 0; padding: 0; }
+  .page-nav .toc a { display: block; padding: 3px 0 3px 12px; margin-left: -1px; border-left: var(--rule-heavy) solid transparent; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: none; transition: color var(--t-press) var(--ease-out), border-color var(--t-press) var(--ease-out); }
+  .page-nav .toc a:hover { color: var(--ink); }
+  .page-nav .toc a.active { color: var(--ink); font-weight: var(--w-bold); border-left-color: var(--viridian); }
+  .page-nav .perm-empty, .page-nav .perm-list { margin: 0; color: var(--grey); font: var(--w-regular) var(--s-ui)/var(--lh-body) var(--font); }
+  .page-nav .perm-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  .page-nav .gx-attach { margin: 0; padding-top: 14px; border-top: var(--hair) solid var(--rule); }
+  @media (max-width: 1279px) {
+    main.reading > .page-nav { margin-top: var(--u4); padding-top: var(--u4); border-top: var(--hair) solid var(--rule); }
+    main.reading > .page-nav > .toc-panel { display: none; }
+  }
+  @media (min-width: 1280px) {
+    main.reading { position: relative; display: grid; grid-template-columns: minmax(0, 740px) 260px; grid-auto-rows: min-content; gap: 0 48px; max-width: 1128px; margin: 16px 0 56px; padding: 28px 40px 64px; background: transparent; border: 0; border-radius: 0; box-shadow: none; align-items: start; }
+    main.reading::before { content: ""; position: absolute; top: 8px; bottom: 32px; left: 16px; width: 788px; background: var(--paper); border: var(--hair) solid var(--rule); border-radius: var(--r-card); box-shadow: var(--e1); pointer-events: none; z-index: 0; }
+    main.reading > :not(.page-nav) { grid-column: 1; min-width: 0; position: relative; z-index: 1; }
+    main.reading > .page-nav { grid-column: 2; grid-row: 1 / 40; position: sticky; top: 24px; max-height: calc(100vh - 48px); overflow-y: auto; padding: 4px 4px 16px 0; z-index: 1; }
+    main.reading .jump { display: none; }
+    body.evidence-open main.reading { grid-template-columns: minmax(0, 740px); max-width: calc(100% - 404px); padding-right: 24px; }
+    body.evidence-open main.reading::before { width: min(788px, calc(100% - 24px)); }
+    body.evidence-open main.reading > .page-nav { display: none; }
+  }
+  main.reading > .eyebrow { display: flex; align-items: center; gap: 8px; }
+  /* A crumb is a link only where its words are: a full-width block sent a click beside the title to the list (#3319). */
+  main.reading :is(.page-crumb, .ov-crumb, .gx-crumb) { display: block; width: fit-content; max-width: 100%; }
+  main.reading :is(.page-crumb, .ov-crumb, .gx-crumb), main.reading > .eyebrow { margin: 0 0 8px; color: var(--grey);
+    font: var(--w-regular) var(--s-ui)/var(--lh-ui) var(--font); text-decoration: none; }
+  main.reading :is(.page-crumb, .ov-crumb a, .gx-crumb), main.reading > .eyebrow a { color: var(--grey); }
+  main.reading :is(.page-crumb, .ov-crumb a, .gx-crumb):hover, main.reading > .eyebrow a:hover { color: var(--ink); }
+  main.reading :is(.n3-person .hero .r4-name, .ov.ov-r6 .ov-say h1.ov-name, .entry .gx-statement), main.reading > .page-head h1 {
+    margin: 0; font: var(--w-bold) var(--s-head)/var(--lh-head) var(--font); letter-spacing: -.01em; }
+  /* The person head is no longer a card: the page is the surface. */
+  main.reading .n3-person .hero { padding: 0 0 8px; border-top: 0; border-radius: 0; background: none; box-shadow: none; animation: none; }
+  main.reading .n3-person .hero .face.xl { width: 48px; height: 48px; font: var(--w-bold) var(--s-body)/var(--lh-tight) var(--font); }
+  main.reading .n3-person .hero-top { gap: 16px; }
+  /* With no card padding around it, the dek's own overflow (a long unbroken role, a tethered mark) stays inside it. */
+  main.reading .n3-person .r4-sub.dek { overflow: hidden; }
+  /* Sections under it are flat too: a hairline above, space around, no raised card in a column of cards. */
+  main.reading .n3-person :is(.widget, .bento > *) { padding: 16px 0; border-radius: 0; background: none; box-shadow: none; animation: none; border-top: var(--hair) solid var(--rule); }
+  main.reading .n3-person .stack2 { padding: 0; border-top: 0; gap: 0; }
+  main.reading .n3-person .row2.dashed { border: 0; border-top: var(--hair) dashed var(--pencil); }
+  main.reading .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; margin-top: 8px; }
+  main.reading .bento > .span2, main.reading .bento > .person-sessions { grid-column: 1 / -1; }
+  /* The actions' fixed slot: top right of the head, the same on an organisation and a project as on a person. */
+  main.reading .ov.ov-r6 .ov-say, main.reading > .page-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; align-items: start; }
+  main.reading .ov.ov-r6 .ov-say > *, main.reading > .page-head > * { grid-column: 1; }
+  main.reading .ov.ov-r6 .ov-say > .rec-acts, main.reading > .page-head > .rec-acts { grid-column: 2; grid-row: 1 / span 3; margin-top: 0; }
+  main.reading .ov.ov-r6 .ov-say :is(.inv-menu, .inv-changed), main.reading > .page-head :is(.inv-menu, .inv-changed) { left: auto; right: 0; }
+  @media (max-width: 640px) {
+    main.reading .ov.ov-r6 .ov-say, main.reading > .page-head { grid-template-columns: minmax(0, 1fr); }
+    main.reading .ov.ov-r6 .ov-say > .rec-acts, main.reading > .page-head > .rec-acts { grid-column: 1; grid-row: auto; margin-top: 12px; }
+    main.reading .bento { grid-template-columns: minmax(0, 1fr); }
+  }
