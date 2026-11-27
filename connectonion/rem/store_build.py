@@ -98,7 +98,7 @@ def redact_text(text: str, privacy: str = "cover") -> str:
     nested subheadings), any list item carrying `[personal]`/`[sensitive]` across
     continuation lines, and any marked line is stripped before leaving the server.
     """
-    if privacy != "public" or not text:
+    if privacy != "public" or not text or not PRIVATE.search(text):
         return text
     lines = text.splitlines()
     kept: list[str] = []

@@ -17,7 +17,12 @@ function todayGroups(entries) {
   // The owner's own rows are re-homed or dropped before the five places are counted, so none is wasted.
   const home = list => list.map(entry => entry.r.path !== REM.owner ? entry : (who => who && { ...entry, who })(ownerCounterpart(entry))).filter(Boolean);
   const today = home(todayEntries(entries)), shown = new Set(today.slice(0, 5).map(doneKey));
-  return personGroups([...today.slice(0, 5), ...home(morningEntries(entries.filter(entry => !shown.has(doneKey(entry)))))]);
+  const groups = personGroups([...today.slice(0, 5), ...home(morningEntries(entries.filter(entry => !shown.has(doneKey(entry)))))]);
+  // #3439: demote elapsed-appointment or needs-recheck draft cards below current actionable items.
+  if (typeof groupNeedsRecheck !== "function") return groups;
+  const active = [], demoted = [];
+  for (const group of groups) (groupNeedsRecheck(group) ? demoted : active).push(group);
+  return [...active, ...demoted];
 }
 // A row on your own page is waiting on whoever it names: the person who asked or is owed. When it
 // names nobody it is your own note, and it is not a person waiting on you (build 3b review).
@@ -46,10 +51,13 @@ function approvalTask(entry) {
 }
 // The most likely next step: a ready reply, a reply REM can write now, a yes/no,
 // a reply to write; closing only what already looks handled. Never the mailbox.
-const STEPS = ["send", "draft", "live", "approve", "write", "done", "open"];
+const STEPS = ["send", "draft", "live", "approve", "write", "recheck", "done", "open"];
 function cardStep(entry) {
   const draft = threadDraft(entry), reply = queuedReply(entry);
-  if (draft?.status === "prepared") return "send";
+  if (draft?.status === "prepared") {
+    if (typeof draftRecheck === "function" && draftRecheck(entry, draft)) return "recheck";
+    return "send";
+  }
   if (reply?.state === "queued" && reply.thread) return REM.live ? "draft" : "live";
   if (REM.live && approvalTask(entry)) return "approve";
   if (draft?.status === "no_reply" || looksDone(entry)) return "done";
@@ -71,10 +79,11 @@ function stepAction({ entry, step }, group, cls) {
   if (step === "write") return mailtoLink(threadContact(entry), cls, t("Write to {name}", { name }), true);
   if (step === "live") return liveReaderAction(cls);
   if (step === "open") return null;  // the name above already opens the page; opening it does nothing about the item
-  const button = el("button", { type: "button", class: cls + (step === "send" ? " review-reply" : ""),
-    text: t({ send: "Review the reply to {name}", approve: "Approve", done: "Mark done" }[step], { name }) });
+  const review = step === "send" || step === "recheck";
+  const button = el("button", { type: "button", class: (step === "recheck" ? "btn-line" : cls) + (review ? " review-reply" : ""),
+    text: t({ send: "Review the reply to {name}", recheck: "Review the reply to {name}", approve: "Approve", done: "Mark done" }[step], { name }) });
   button.onclick = event => {
-    if (step === "send") return openDraft(event.currentTarget.closest(".qcard"));
+    if (review) return openDraft(event.currentTarget.closest(".qcard"));
     if (step === "approve") return openApprovalSheet([approvalTask(entry)]);
     closeEntries(event.currentTarget.closest(".qcard"), group.entries.filter(item => cardStep(item) === "done"));
   };
@@ -178,7 +187,7 @@ function cardItem(entry, many, seen = new Set(), more = null, handled = false, l
   item.onclick = event => { if (!event.target.closest("a, button, textarea, input, select, summary, .talk")) item.classList.toggle("show"); };
   return item;
 }
-function cardDraft(draft, group) {
+function cardDraft(draft, group, recheck = null) {
   const n = group.entries.length;
   const sent = held => {
     // Sent at once: one reply answers every item on the card. Held: Undo must bring them all back.
@@ -194,8 +203,40 @@ function cardDraft(draft, group) {
   };
   const entry = group.entries[0], ask = morningWords(entry.t.text, entry.r, entry.t).words;
   const close = (event, state = "done", extra = null, until = null) => closeEntries(event.currentTarget.closest(".qcard"), [entry], state, extra, until);
-  return el("div", { class: "qdraft" }, [n > 1 ? el("p", { class: "quiet-line", text: t(n === 2 ? "One reply can answer both." : "One reply can answer all {n}.", { n }) }) : null,
-    replyDraftCard(draft, sent, group.r, { ask, triage: n === 1 && liveHere() ? handOff(entry, close, null, true) : null })]);
+  const banner = recheck ? el("div", { class: "draft-recheck", role: "alert", "data-recheck": recheck.kind }, [
+    el("strong", { text: recheck.kind === "elapsed"
+      ? t("Time already passed ({time}) — recheck before sending", { time: recheck.time })
+      : t("Needs your input before sending — draft still contains placeholders") }),
+    el("span", { class: "draft-recheck-sub", text: recheck.kind === "elapsed"
+      ? t("This draft refers to an elapsed slot and is not ready to send as-is.")
+      : t("Fill or edit the remaining placeholder text before sending.") })
+  ]) : null;
+  const draftNode = replyDraftCard(draft, sent, group.r, { ask, triage: n === 1 && liveHere() ? handOff(entry, close, null, true) : null });
+  const wrap = el("div", { class: "qdraft" + (recheck ? " qdraft-recheck" : "") }, [
+    n > 1 ? el("p", { class: "quiet-line", text: t(n === 2 ? "One reply can answer both." : "One reply can answer all {n}.", { n }) }) : null,
+    ...(banner ? [banner] : []), draftNode]);
+  // #3479: render a visible localized label on .mail-write directly beside Send/More (and keep after redraft).
+  // #3439: demote primary Send styling when the draft refers to an elapsed slot or unfilled placeholder.
+  const enhance = root => {
+    if (!root || typeof root.querySelectorAll !== "function") return;
+    for (const btn of root.querySelectorAll(".mail-write")) {
+      btn.classList.add("mail-write-labeled");
+      if (!btn.querySelector(".mail-write-label")) {
+        btn.appendChild(el("span", { class: "mail-write-label", text: t("Write full screen") }));
+      }
+    }
+    if (recheck) {
+      for (const sendBtn of root.querySelectorAll(".mail-actions > .btn-act")) {
+        sendBtn.classList.remove("btn-act");
+        sendBtn.classList.add("btn-line");
+      }
+    }
+  };
+  enhance(wrap);
+  if (typeof MutationObserver === "function" && typeof Node !== "undefined" && wrap instanceof Node) {
+    new MutationObserver(() => enhance(wrap)).observe(wrap, { childList: true, subtree: true });
+  }
+  return wrap;
 }
 // A snapshot can show the work but not do it: one plain line per page says so, never a command (D-60).
 function snapshotLine() {
@@ -986,7 +1027,8 @@ function talkPanel(begin) {
 // show who and what, and reveal their action on hover, focus or tap.
 function personCard(group, focal, total = 1, index = 0) {
   const { r, entries } = group, next = groupStep(entries), late = groupLate(group);
-  const draft = next.step === "send" ? threadDraft(next.entry) : null, seen = new Set();
+  const draft = (next.step === "send" || next.step === "recheck") ? threadDraft(next.entry) : null, seen = new Set();
+  const recheck = draft && typeof draftRecheck === "function" ? draftRecheck(next.entry, draft) : null;
   const more = draft ? el("button", { type: "button", class: "btn-quiet qfull", text: t("More of this card") }) : null;
   // A green Mark done that would close just one row only repeats that row's strip button, so it is not drawn;
   // closing several handled rows at once, it does what no row's button does and stays.
@@ -994,7 +1036,7 @@ function personCard(group, focal, total = 1, index = 0) {
   // One primary per card (principle 5), by what the item is: the draft's Send, or the green step that answers or
   // approves; a debt REM prepared as a task goes to Codex (principle 8); anything else is closed. "Open {name}" is
   // not a step: the name above already opens the page, and opening it does nothing about the item.
-  const task = rowTask(next.entry), byAgent = liveHere() && !!task && !handed(task) && !["send", "draft", "approve"].includes(next.step);
+  const task = rowTask(next.entry), byAgent = liveHere() && !!task && !handed(task) && !["send", "recheck", "draft", "approve"].includes(next.step);
   const closesHere = closing.length === 1;
   const step = byAgent || closesHere ? null : stepAction(next, group, focal ? "btn-act" : "btn-line");
   // The bold lead sits on the row it is about: the task's own row, else the row that closes.
@@ -1003,10 +1045,11 @@ function personCard(group, focal, total = 1, index = 0) {
   // stays (it is the card's lead, shown without a hover, and the reason REM gives sits above it); E still closes.
   const allClosed = step && liveHere() && entries.length > 1 && closing.length === entries.length;
   const triageInFooter = !!draft && entries.length === 1 && liveHere();
-  const card = el("li", { class: "qcard" + (focal ? " open focal" : "") + (late ? " late" : "") + (triageInFooter ? " triage-footer" : ""), tabindex: "-1", "data-path": r.path, "data-step": next.step }, [
+  const card = el("li", { class: "qcard" + (focal ? " open focal" : "") + (late ? " late" : "") + (triageInFooter ? " triage-footer" : "") + (recheck ? " recheck-draft" : ""),
+    tabindex: "-1", "data-path": r.path, "data-step": next.step, ...(recheck ? { "data-recheck": recheck.kind } : {}) }, [
     cardHead(group, late, total > 1, allClosed ? false : undefined, { i: index + 1, n: total }), el("ul", { class: "qitems" }, entries.map((entry, i) => cardItem(entry, entries.length > 1, seen, i ? null : more,
       cardStep(entry) === "done" && !(step && closing.includes(entry)), entry === leadEntry ? leadKind : null))),
-    draft ? cardDraft(draft, group) : null,
+    draft ? cardDraft(draft, group, recheck) : null,
     el("div", { class: "card-acts" }, [step, notDoneAction(next), mailboxLink(next.entry)]), snapshotCloseLine()]);
   card.markDone = () => closeEntries(card, entries);
   let touch = null;
@@ -1072,5 +1115,109 @@ function lazyFold(details, fill) {
   details.querySelector(":scope > summary").addEventListener("click", details.fill);
   details.addEventListener("toggle", () => { if (details.open) details.fill(); });
   return details;
+}
+
+// #3439: Detect elapsed same-day appointments and unfilled owner-facing draft placeholders so Today
+// demotes them below current actionable items and warns clearly before sending.
+if (typeof UI !== "undefined" && UI.zh) {
+  Object.assign(UI.zh, {
+    "Time already passed ({time}) — recheck before sending": "约定时间已过（{time}）— 发送前请重新确认",
+    "This draft refers to an elapsed slot and is not ready to send as-is.": "这份草稿涉及已过去的时间，不能直接按原样发送，请先修改或改期。",
+    "Needs your input before sending — draft still contains placeholders": "发送前需你补充 — 草稿里还有未填占位或提示",
+    "Fill or edit the remaining placeholder text before sending.": "请先补全或修改草稿中的占位内容再发送。"
+  });
+}
+const RECHECK_MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+function parseClockTime(hourRaw, minRaw, merRaw, zhPart, zhMin) {
+  let hour = Number(hourRaw);
+  let minute = zhMin === "半" ? 30 : zhMin ? Number(String(zhMin).replace(/分$/, "")) : (minRaw != null && minRaw !== "" ? Number(minRaw) : 0);
+  const mer = String(merRaw || "").toLowerCase();
+  if (mer === "pm" && hour >= 1 && hour <= 11) hour += 12;
+  else if (mer === "am" && hour === 12) hour = 0;
+  else if (["下午", "晚上", "傍晚"].includes(zhPart) && hour >= 1 && hour <= 11) hour += 12;
+  else if (zhPart === "中午" && hour >= 1 && hour <= 5) hour += 12;
+  return Number.isInteger(hour) && Number.isInteger(minute) && hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59
+    ? { hour, minute } : null;
+}
+function elapsedAppointmentTime(text, due = "") {
+  if (!text) return null;
+  const nowMs = typeof clockNow === "function" ? clockNow() : Date.now();
+  const now = new Date(nowMs);
+  if (isNaN(now.getTime())) return null;
+  const todayY = now.getFullYear(), todayM = now.getMonth() + 1, todayD = now.getDate();
+  const pad = n => String(n).padStart(2, "0");
+  const todayStr = `${todayY}-${pad(todayM)}-${pad(todayD)}`;
+  const candidates = [];
+  const add = (y, m, d, clock) => {
+    if (!clock) return;
+    const dt = new Date(y, m - 1, d, clock.hour, clock.minute, 0, 0);
+    if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return;
+    const dayDiff = Math.floor((new Date(todayY, todayM - 1, todayD) - new Date(y, m - 1, d)) / 86400000);
+    if (dayDiff > 7) return;
+    candidates.push(dt);
+  };
+  const str = String(text);
+  for (const m of str.matchAll(/\b(\d{4})-(\d{2})-(\d{2})(?:[T\s]+(?:at\s+)?)?(?:(上午|早上|早晨|中午|下午|晚上|傍晚)\s*)?(\d{1,2})(?:[:：](\d{2})|点(半|\d{1,2}分?)?|\s*(am|pm)\b)/gi)) {
+    if (!(m[6] || m[7] || m[8] || m[4] || m[0].includes("点"))) continue;
+    add(Number(m[1]), Number(m[2]), Number(m[3]), parseClockTime(m[5], m[6], m[8], m[4], m[7]));
+  }
+  const monthPat = "(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
+  for (const m of str.matchAll(new RegExp(`\\b(${monthPat})\\s+(\\d{1,2})(?:,?\\s*(\\d{4}))?(?:\\s+at|\\s*,)?\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?\\b`, "gi"))) {
+    if (!(m[5] || m[6])) continue;
+    const mon = RECHECK_MONTHS.indexOf(m[1].slice(0, 3).toLowerCase()) + 1;
+    add(Number(m[3] || todayY), mon, Number(m[2]), parseClockTime(m[4], m[5], m[6]));
+  }
+  for (const m of str.matchAll(new RegExp(`\\b(\\d{1,2})\\s+(${monthPat})(?:\\s+(\\d{4}))?(?:\\s+at|\\s*,)?\\s+(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?\\b`, "gi"))) {
+    if (!(m[5] || m[6])) continue;
+    const mon = RECHECK_MONTHS.indexOf(m[2].slice(0, 3).toLowerCase()) + 1;
+    add(Number(m[3] || todayY), mon, Number(m[1]), parseClockTime(m[4], m[5], m[6]));
+  }
+  for (const m of str.matchAll(/(\d{1,2})月(\d{1,2})[日号]\s*(上午|早上|早晨|中午|下午|晚上|傍晚)?\s*(\d{1,2})\s*(?:[:：](\d{2})|点(半|\d{1,2}分?)?)/g)) {
+    add(todayY, Number(m[1]), Number(m[2]), parseClockTime(m[4], m[5], null, m[3], m[6]));
+  }
+  for (const pat of [
+    /\b(?:today|this\s+(?:morning|afternoon|evening)|tonight)\b[^.\n]{0,24}?(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/gi,
+    /\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b[^.\n]{0,20}?\btoday\b/gi
+  ]) {
+    for (const m of str.matchAll(pat)) {
+      if (!(m[2] || m[3])) continue;
+      const hint = m[0].toLowerCase();
+      const mer = m[3] || (/afternoon|evening|tonight/.test(hint) ? "pm" : "");
+      add(todayY, todayM, todayD, parseClockTime(m[1], m[2], mer));
+    }
+  }
+  for (const m of str.matchAll(/(?:今天|今日)\s*(上午|早上|早晨|中午|下午|晚上|傍晚)?\s*(\d{1,2})\s*(?:[:：](\d{2})|点(半|\d{1,2}分?)?)/g)) {
+    add(todayY, todayM, todayD, parseClockTime(m[2], m[3], null, m[1], m[4]));
+  }
+  if (due === todayStr) {
+    for (const m of str.matchAll(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/gi)) {
+      if (!(m[2] || m[3])) continue;
+      add(todayY, todayM, todayD, parseClockTime(m[1], m[2], m[3]));
+    }
+    for (const m of str.matchAll(/(上午|早上|早晨|中午|下午|晚上|傍晚)\s*(\d{1,2})\s*(?:[:：](\d{2})|点(半|\d{1,2}分?)?)/g)) {
+      add(todayY, todayM, todayD, parseClockTime(m[2], m[3], null, m[1], m[4]));
+    }
+  }
+  if (!candidates.length || candidates.some(dt => dt.getTime() >= nowMs)) return null;
+  const latest = candidates.reduce((best, dt) => dt.getTime() > best.getTime() ? dt : best);
+  return { at: latest, time: `${pad(latest.getHours())}:${pad(latest.getMinutes())}` };
+}
+function draftHasUnfilledInstruction(draft) {
+  const body = String(draft?.body || "");
+  return /\{\{[^}]+\}\}|<[A-Z][A-Z0-9_ -]{1,32}>|\b(?:TBD|TODO)\b|(?:请(?:填写|补充|确认)[^。\n]{0,20}再发)/i.test(body);
+}
+function draftRecheck(entry, draft) {
+  const text = [entry?.t?.originalText || entry?.t?.text || "", draft?.subject || "", draft?.body || ""].filter(Boolean).join("\n");
+  const elapsed = elapsedAppointmentTime(text, entry?.t?.due || "");
+  if (elapsed) return { kind: "elapsed", ...elapsed };
+  if (draft && draftHasUnfilledInstruction(draft)) return { kind: "placeholder" };
+  return null;
+}
+function groupNeedsRecheck(group) {
+  return !!(group?.entries?.length) && group.entries.every(entry => {
+    const draft = threadDraft(entry);
+    if (draft?.status === "prepared") return !!draftRecheck(entry, draft);
+    return !!elapsedAppointmentTime(entry?.t?.originalText || entry?.t?.text || "", entry?.t?.due || "");
+  });
 }
 

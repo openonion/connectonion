@@ -312,7 +312,8 @@ function row(r, opts) {
         r.category === "people" && restingFriends().has(r.path) ? el("span", { class: "meta", text: t("No chats yet") }) : null, statusPill(r)]),
       el("span", { class: "when", text: shortDate(k.last) })])]);
   // A page's Tags line is shown by its tag row, never as its summary (#3140: tag-page members read "Tags: pilot").
-  const raw = /^\s*(?:\*\*)?(?:Tags|标签)(?:\*\*)?\s*[:：]/i.test(k.summary || "") ? "" : k.summary;
+  const rawBase = /^\s*(?:\*\*)?(?:Tags|标签)(?:\*\*)?\s*[:：]/i.test(k.summary || "") ? "" : k.summary;
+  const raw = r.category === "orgs" && typeof stripStaleOrgPeopleCount === "function" ? stripStaleOrgPeopleCount(rawBase) : rawBase;
   const summary = STATEMENT_CATEGORIES.includes(r.category) ? statementLead(summaryLine(raw)) : summaryLine(raw);
   const lead = summary.length > 220 ? summary.slice(0, 217) + "…" : summary;
   if (lead) li.appendChild(rowLine("hit", raw, lead, r.path));
@@ -596,13 +597,22 @@ function morningBrief() {
 // The pages' half of the night, said as pages, so it never reads as "nothing happened" under the tally of
 // what REM handled; a pass older than a day and a half names its date instead of calling itself last night.
 function pagesLine(pass) {
-  const n = pass?.changed?.length || 0, values = { n, date: pass ? fmtDate(calendarDay(new Date(pass.latest).toISOString())) : "" };
-  const dated = pass && Date.parse(REM.as_of) - pass.latest > 36 * HOUR;
-  if (dated) return t(!n ? "Pages were last updated {date}: nothing new about your people or projects."
-    : n === 1 ? "Pages were last updated {date}: nothing new about your people or projects; 1 page was only reworded."
-    : "Pages were last updated {date}: nothing new about your people or projects; {n} pages were only reworded.", values);
-  return t(!n ? "Pages about your people and projects gained nothing new last night."
-    : n === 1 ? "Pages about your people and projects gained nothing new last night; 1 page was only reworded."
+  const runN = pass?.runChanged ? pass.runChanged.length : (pass?.changed?.length || 0);
+  const stampN = pass?.stampChanged?.length || 0;
+  const localPassDay = pass?.localDate || (pass ? (typeof localDay === "function" ? localDay(pass.latest) : calendarDay(new Date(pass.latest).toISOString())) : "");
+  const values = { n: runN || stampN, date: localPassDay ? (typeof calendarDate === "function" ? calendarDate(localPassDay) : fmtDate(localPassDay)) : "" };
+  const dated = pass && (pass.isLastNight === false || (Date.parse(REM.as_of) - pass.latest > 36 * HOUR));
+  if (dated) {
+    if (!runN && stampN) return t(stampN === 1 ? "Pages were last updated {date}: no content diffs; 1 page had a metadata update."
+      : "Pages were last updated {date}: no content diffs; {n} pages had metadata updates.", values);
+    return t(!runN ? "Pages were last updated {date}: nothing new about your people or projects."
+      : runN === 1 ? "Pages were last updated {date}: nothing new about your people or projects; 1 page was only reworded."
+      : "Pages were last updated {date}: nothing new about your people or projects; {n} pages were only reworded.", values);
+  }
+  if (!runN && stampN) return t(stampN === 1 ? "No page content changed last night; 1 page had a recent metadata update."
+    : "No page content changed last night; {n} pages had recent metadata updates.", values);
+  return t(!runN ? "Pages about your people and projects gained nothing new last night."
+    : runN === 1 ? "Pages about your people and projects gained nothing new last night; 1 page was only reworded."
     : "Pages about your people and projects gained nothing new last night; {n} pages were only reworded.", values);
 }
 function failureSummary(pass) {
@@ -698,5 +708,105 @@ function taskResult(entry) {
     result.append(reply, copy);
   }
   return result;
+}
+
+// #3364 Part A: One authoritative translation count shared across Today, Knowledge, Keys, People, Topic, Graph & Settings.
+const TRANSLATABLE_CATEGORIES = ["people", "orgs", "projects", "decisions", "principles", "knowledge", "skills"];
+function listedTranslatablePages() {
+  return (REM.records || []).filter(r => r.written && TRANSLATABLE_CATEGORIES.includes(r.category)
+    && !r.needs_review && !r.service && !r.catalog_parent);
+}
+function authoritativeTranslationCounts() {
+  const job = typeof translateAllJob !== "undefined" && translateAllJob ? translateAllJob : {};
+  const busy = ["starting", "running", "stopping"].includes(job.state);
+  if (job.total != null && job.done != null) {
+    const total = Math.max(0, Number(job.total) || 0);
+    const done = Math.max(0, Math.min(total, Number(job.done) || 0));
+    return { total, done, left: Math.max(0, total - done), busy, job, source: "job" };
+  }
+  const pre = (typeof detailReady === "undefined" || !detailReady) && Number.isFinite(REM.untranslated_count);
+  if (pre) {
+    const left = Math.max(0, Number(REM.untranslated_count) || 0);
+    const total = Number.isFinite(REM.written_count) ? Math.max(left, Number(REM.written_count)) : left;
+    return { total, done: Math.max(0, total - left), left, busy, job, source: "snapshot" };
+  }
+  const pages = listedTranslatablePages();
+  const missing = pages.filter(r => !hasChinese(r) && !/^zh(?:-|$)/i.test(r.written_in || ""));
+  return { total: pages.length, done: pages.length - missing.length, left: missing.length, busy, job, source: "records" };
+}
+if (typeof untranslatedPages === "function") {
+  untranslatedPages = function() {
+    return listedTranslatablePages().filter(r => !hasChinese(r) && !/^zh(?:-|$)/i.test(r.written_in || ""));
+  };
+}
+if (typeof langParts === "function") {
+  langParts = function() {
+    const { total, done, left, busy, job } = authoritativeTranslationCounts();
+    const parts = [];
+    if (uiLanguage === "zh" && busy) {
+      parts.push(el("span", { text: job.total != null ? t("Chinese {n} / {m}", { n: done, m: total }) : t("Getting the pages ready…") }));
+      const stop = el("button", { type: "button", class: "lang-act", text: t("Stop") });
+      stop.disabled = job.state === "stopping";
+      stop.onclick = () => translateAllSend("stop");
+      parts.push(stop);
+    } else if (uiLanguage === "zh" && left) {
+      const run = (REM.logs || REM.brief_logs || []).find(run => /translat/.test(run.phase || ""));
+      const failed = run?.translation_failures ?? (run?.pages || []).filter(page => page.outcome === "failed").length;
+      if (failed) parts.push(el("span", { class: "lang-failed", text: t(failed === 1 ? "{n} page could not be translated." : "{n} pages could not be translated.", { n: failed }) }));
+      parts.push(el("span", { text: t("{n} pages not in Chinese yet", { n: left }), title: t("Chinese {n} / {m}", { n: total - left, m: total }) }));
+      if (liveHere()) {
+        const go = el("button", { type: "button", class: "lang-act", text: t("Translate") });
+        go.onclick = () => translateAllSend("start");
+        parts.push(go);
+      } else parts.push(el("span", { class: "lang-when", text: t("tonight") }));
+    }
+    return { parts, busy, left, job };
+  };
+}
+// #3438: Consistent local-time night window & clean separation of run rewrites vs metadata/date stamp updates.
+function localNightDay(ms) {
+  if (typeof localDay === "function") return localDay(ms);
+  const d = new Date(ms);
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+if (typeof lastPass === "function") {
+  lastPass = function() {
+    const logs = passRuns().filter(run => !isNaN(runTime(run)));
+    if (!logs.length) return null;
+    const asOf = Date.parse(REM.as_of || "") || (typeof clockNow === "function" ? clockNow() : Date.now());
+    const latest = Math.max(...logs.map(runTime));
+    const windowStart = latest - 18 * HOUR;
+    const isLastNight = (asOf - latest) <= 36 * HOUR;
+    const runs = logs.filter(run => runTime(run) >= windowStart);
+    const runChangedSet = new Set();
+    for (const run of runs) for (const path of run.changed || []) if (byPath(path) && path !== "skills/catalog/index.md") runChangedSet.add(path);
+    const startDay = localNightDay(windowStart), endDay = localNightDay(latest);
+    const stampChangedSet = new Set();
+    for (const r of listedRecords()) {
+      if (runChangedSet.has(r.path)) continue;
+      const m = /\b(?:investigated|updated)\s+(\d{4}-\d{2}-\d{2})/.exec((STAMP.exec(r.text) || [""])[0]);
+      if (m && m[1] >= startDay && m[1] <= endDay) stampChangedSet.add(r.path);
+    }
+    const runChanged = [...runChangedSet].map(byPath).sort(byActivity);
+    const stampChanged = [...stampChangedSet].map(byPath).sort(byActivity);
+    const changed = [...new Set([...runChangedSet, ...stampChangedSet])].map(byPath).sort(byActivity);
+    const sources = [...new Set(runs.flatMap(run => Array.isArray(run.sources) ? run.sources.map(sourceName) : []).filter(Boolean))];
+    const failed = runs.filter(run => FAILED.test(String(run.outcome || "")) && !/translat/.test(run.phase || ""));
+    const items = runs.reduce((n, run) => n + (Number(run.items) || 0), 0);
+    const claims = runs.flatMap(run => Array.isArray(run.claim_changes) ? run.claim_changes : [])
+      .filter(claim => byPath(claim.record) && (claim.sources || []).length && !sameClaim(claim.before || "", claim.after || ""));
+    return { latest, windowStart, isLastNight, localDate: endDay, runs, changed, runChanged, stampChanged, sources, failed, items, claims };
+  };
+}
+if (typeof updatedMarker === "function") {
+  updatedMarker = function(r, withLabel = false) {
+    if (firstBuild(memoryPass) || !memoryPass || memoryPass.isLastNight === false) return null;
+    const pool = memoryPass.runChanged || memoryPass.changed || [];
+    if (!pool.some(page => page.path === r.path)) return null;
+    if (!withLabel) return el("span", { class: "fresh-label", text: t("last night"), title: t("Updated in last night's pass") });
+    const dot = el("span", { class: "fresh-dot", role: "img", text: "●", title: t("updated last night"), "aria-label": t("updated last night") });
+    return el("span", { class: "updated-label" }, [dot, t("updated last night")]);
+  };
 }
 

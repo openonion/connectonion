@@ -45,13 +45,17 @@ def test_wechat_is_on_by_default_once_keys_are_captured(tmp_path, monkeypatch):
     monkeypatch.setattr(svc.Path, "home", staticmethod(lambda: tmp_path / "nokeys"))
     off = service.subscriptions(tmp_path / "rem")["wechat"]
     assert off["enabled"] is False and off["adapter"] == "waiting for co wechat"
-    # Keys captured: on by default, no prompt (context over control).
+    # Keys captured: on by default for the owner's default ~/.co/rem notebook (#3375), off for non-default roots.
     home = tmp_path / "haskeys"
     (home / ".co" / "wechat").mkdir(parents=True)
     (home / ".co" / "wechat" / "keys.json").write_text("{}")
     monkeypatch.setattr(svc.Path, "home", staticmethod(lambda: home))
-    on = service.subscriptions(tmp_path / "rem")["wechat"]
+    default_root = home / ".co" / "rem"
+    prepare(default_root)
+    on = service.subscriptions(default_root)["wechat"]
     assert on["enabled"] is True and on["consented"] is True and on["chats"] == ["*"]
+    other = service.subscriptions(tmp_path / "rem")["wechat"]
+    assert other["enabled"] is False and other["consented"] is False
 
 
 def test_seed_chat_people_adds_new_two_way_contacts_only(tmp_path, monkeypatch):

@@ -76,16 +76,31 @@ def fire_times(config: dict) -> list[str]:
 
 def describe_schedule_window(config: dict) -> dict:
     """Human- and machine-readable summary of starts, timezone, and continuation bounds (#3480)."""
-    from .config import continuation_window_end
+    from .config import continuation_window_end, profile_policy
 
     schedule = config["schedule"]
     times = list(schedule["times"])
     fired = fire_times(config)
-    window_end = continuation_window_end(config)
-    latest_fire = window_end if window_end and window_end in fired else (fired[-1] if fired else None)
+    continuation_end = continuation_window_end(config)
+    policy_info = profile_policy(config)
+    window_end = policy_info["window_end"] if policy_info else continuation_end
+    latest_fire = (
+        policy_info["latest_fire"]
+        if policy_info
+        else (continuation_end if continuation_end and continuation_end in fired else (fired[-1] if fired else None))
+    )
+    long_work_cutoff = policy_info["long_work_cutoff"] if policy_info else None
+    model_turn_cutoff = policy_info["model_turn_cutoff"] if policy_info else None
+    policy = policy_info["policy"] if policy_info else None
     profile = schedule.get("profile", "default")
     tz = schedule.get("timezone", "")
-    if window_end:
+    if policy_info:
+        summary = (
+            f"{profile}: {len(times)} starts ({', '.join(times)}) {tz}; "
+            f"latest fire {latest_fire}, window ends {window_end} ({len(fired)} fires/day); "
+            f"long work cutoff {long_work_cutoff}, model turn cutoff {model_turn_cutoff}; {policy}"
+        )
+    elif window_end:
         summary = (
             f"{profile}: {len(times)} starts ({', '.join(times)}) {tz}; "
             f"15-min continuations stop at {window_end} ({len(fired)} fires/day)"
@@ -97,11 +112,15 @@ def describe_schedule_window(config: dict) -> dict:
         )
     return {
         "profile": profile,
+        "starts": len(times),
         "times": times,
         "timezone": tz,
         "continuation_step_minutes": 15,
         "window_end": window_end,
         "latest_fire": latest_fire,
+        "long_work_cutoff": long_work_cutoff,
+        "model_turn_cutoff": model_turn_cutoff,
+        "policy": policy,
         "fire_count": len(fired),
         "summary": summary,
     }

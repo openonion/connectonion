@@ -1,0 +1,23 @@
+version: v1.9.7rc33
+images:
+  - file: today-write-full-screen-desktop.webp
+    alt: "REM Today reply card on desktop showing the visible Write full screen button beside More and Send"
+    caption: "Visible localized Write full screen action beside reply controls on Today (issue 3479)."
+    scenario: "Synthetic Today reply card in Porcelain light skin with inline choice slot and visible full-screen writer trigger."
+    viewport: "1440x900@2x"
+    commit: "feat/rem-rc33-polish"
+    source_run: "capture_rc33_visuals.py"
+  - file: today-write-full-screen-mobile.webp
+    alt: "REM Today reply card on a 390px phone in Chinese showing the visible 全屏写 button"
+    caption: "Mobile Today reply footer showing the >=44px 全屏写 touch target without going through More (issue 3479)."
+    scenario: "Synthetic Today reply card on 390x844 mobile viewport in Chinese locale."
+    viewport: "390x844@2x"
+    commit: "feat/rem-rc33-polish"
+    source_run: "capture_rc33_visuals.py"
+  - file: phone-kg-labels-mobile.webp
+    alt: "REM Knowledge Graph on a 390px phone displaying priority node labels at fitted zoom"
+    caption: "Priority hub node labels rendered on phone knowledge graph at fitted zoom (issue 3390)."
+    scenario: "Synthetic notebook knowledge graph opened on 390x844 mobile viewport."
+    viewport: "390x844@2x"
+    commit: "feat/rem-rc33-polish"
+    source_run: "capture_rc33_visuals.py"

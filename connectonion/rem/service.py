@@ -82,12 +82,18 @@ MAX_LOOKBACK_DAYS = {"codex": 180, "claude-code": 180, "gmail": 730, "outlook": 
 READABLE = (*KINDS, *MAIL_KINDS, *CHAT_KINDS)
 
 
+def _is_default_owner_root(root: Path) -> bool:
+    """True only for the owner's default ~/.co/rem notebook; custom/temp roots never inherit HOME defaults (#3375)."""
+    return Path(root).expanduser().resolve() == (Path.home() / ".co" / "rem").resolve()
+
+
 def subscriptions(root: Path) -> dict:
     saved = read_json(state_path(root, "subscriptions.json"), {})
     if not isinstance(saved, dict):
         raise RemError("Invalid subscriptions file; preserve it for diagnosis")
     since = (now() - timedelta(days=DEFAULT_LOOKBACK_DAYS)).isoformat()
-    _wechat_ready = (Path.home() / ".co" / "wechat" / "keys.json").is_file()
+    _home_wechat_ready = (Path.home() / ".co" / "wechat" / "keys.json").is_file()
+    _wechat_ready = _home_wechat_ready and _is_default_owner_root(root)
     defaults = {
         "codex": {"id": "codex", "kind": "codex", "root": str(codex_sessions_root()),
                   "project": None, "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["codex"],
@@ -110,20 +116,19 @@ def subscriptions(root: Path) -> dict:
                      else "waiting for co whatsapp listen"},
         # Off until chosen. Unlike WhatsApp it needs no listener: `co wechat sync` reads WeChat for Mac's own
         # databases each time, and "*" reads every one-to-one chat (people), never a group unless named.
-        # On by default once WeChat's keys are captured (co wechat key capture): reading your own WeChat
-        # locally is reversible, so context-over-control means do it, not ask (co rem sources remove wechat undoes it).
+        # On by default once WeChat's keys are captured (co wechat key capture) for the owner's default notebook
+        # (~/.co/rem) only (#3375); non-default roots never inherit HOME-wide sources automatically.
         "wechat": {"id": "wechat", "kind": "wechat", "root": str(chat_home("wechat")), "chats": ["*"],
                    "since": since, "max_lookback_days": MAX_LOOKBACK_DAYS["wechat"],
                    "enabled": _wechat_ready, "consented": _wechat_ready,
-                   "adapter": "available" if _wechat_ready else "waiting for co wechat"},
+                   "adapter": "available" if _home_wechat_ready else "waiting for co wechat"},
     }
     defaults.update(saved)
     # Capturing WeChat's keys IS the local, reversible consent (#3279): keys present means the source is
-    # enabled and consented, even for a subscription stored before #3281 with consented:False, so it is one
-    # source of truth and a page we seed is a page we fill (#3289). An explicit `co rem sources remove wechat`
-    # (unsubscribed) is respected and stays off.
+    # enabled and consented on the default owner notebook or a notebook that already explicitly stored a
+    # wechat subscription (#3281, #3375). An explicit `co rem sources remove wechat` stays off.
     wechat = defaults.get("wechat")
-    if _wechat_ready and wechat and not wechat.get("unsubscribed"):
+    if _home_wechat_ready and (_is_default_owner_root(root) or "wechat" in saved) and wechat and not wechat.get("unsubscribed"):
         wechat["enabled"] = True
         wechat["consented"] = True
     return defaults

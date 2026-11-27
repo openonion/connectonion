@@ -617,7 +617,11 @@ def _depth_slot(root, due, *, stage=None, say=None):
 
     The writer lock is not held across the worker calls. A slot that already ran, or was
     interrupted, is not run again: its saved result is returned."""
+    from .config import read_config
     from .files import WRITE_WAIT_SECONDS, maintenance_lock, read_json, state_path, write_json
+    from .native_round import overnight_wave_policy
+    if overnight_wave_policy(read_config(root)) != "full":
+        return None
     path = state_path(root, 'round.json')
     with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
         cursor = read_json(path, {})

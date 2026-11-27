@@ -245,6 +245,66 @@ def prewarm_reader(root: Path, python_bin: Path) -> bool:
         return False
 
 
+def refresh_host_agent_after_upgrade(
+    home_dir: Path,
+    python_bin: Path,
+    *,
+    agents_dir: Path | None = None,
+    uid: int | None = None,
+    run=subprocess.run,
+    platform: str | None = None,
+) -> dict[str, Any]:
+    """On macOS, refresh `ai.openonion.rem-host` plist to the new binary and kickstart it in `gui/$UID` (#3317)."""
+    plat = platform or sys.platform
+    if plat != "darwin":
+        return {"refreshed": False, "reason": "non-macOS"}
+    from . import live_host
+
+    resolved_agents = Path(agents_dir) if agents_dir is not None else home_dir / "Library" / "LaunchAgents"
+    if not live_host.host_agent_installed(agents_dir=resolved_agents):
+        return {"refreshed": False, "reason": "not installed"}
+    co_dir = _co_dir(home_dir)
+    saved = read_json(co_dir / "rem-live-host.json", {})
+    port = saved.get("port") if isinstance(saved, dict) and isinstance(saved.get("port"), int) else None
+    installed = live_host.install_host_agent(
+        co_dir,
+        port=port,
+        python_bin=python_bin,
+        agents_dir=resolved_agents,
+        uid=uid,
+        run=run,
+        platform=plat,
+    )
+    if not installed.get("installed"):
+        return {"refreshed": False, "reason": installed.get("error") or "install failed"}
+    kicked = live_host.kickstart_host_agent(
+        uid=uid,
+        agents_dir=resolved_agents,
+        run=run,
+        platform=plat,
+    )
+    if kicked.get("ok") and isinstance(saved, dict) and saved.get("address"):
+        updated = {
+            **saved,
+            "port": installed["port"],
+            "command": " ".join(installed["command"][1:]),
+            "session": "Aqua",
+            "via_launch_agent": True,
+            "label": live_host.REM_HOST_LABEL,
+        }
+        if kicked.get("pid"):
+            updated["pid"] = kicked["pid"]
+        write_json(co_dir / "rem-live-host.json", updated)
+    return {
+        "refreshed": bool(kicked.get("ok")),
+        "label": live_host.REM_HOST_LABEL,
+        "plist": installed.get("plist"),
+        "port": installed.get("port"),
+        "pid": kicked.get("pid"),
+        **({"error": kicked["error"]} if kicked.get("error") else {}),
+    }
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -439,13 +499,16 @@ def run_atomic_upgrade(
             if backup_pkg.exists():
                 shutil.rmtree(backup_pkg, ignore_errors=True)
 
-    did_prewarm = prewarm_reader(rem_root, _tool_python(live_tools)) if prewarm else False
+    new_python = _tool_python(live_tools)
+    did_prewarm = prewarm_reader(rem_root, new_python) if prewarm else False
+    host_agent = refresh_host_agent_after_upgrade(home_dir, new_python, run=run)
     return write_upgrade_state({
         "outcome": "upgraded",
         "from": installed,
         "to": target,
         "channel": config["channel"],
         "prewarmed": did_prewarm,
+        **({"host_agent_restarted": True} if host_agent.get("refreshed") else {}),
         "at": _now_iso(),
     }, home_dir)
 

@@ -244,7 +244,7 @@ function orgRows() {
   }
   return [...byName.values()].map(pages => {
     const r = [...pages].sort((a, b) => (b.people || []).length - (a.people || []).length)[0];
-    const people = [...new Map(pages.flatMap(page => orgMembers(page)).map(p => [p.path, p])).values()];
+    const people = [...new Map(pages.flatMap(page => (typeof orgMembership === "function" ? orgMembership(page).all : orgMembers(page))).map(p => [p.path, p])).values()];
     // Last contact is the newest exchange with anyone there: the page's own date lags until REM re-reads it.
     return { r, pages, people, units: pages.flatMap(page => orgUnitNames(page)), last: [...pages.map(page => known(page).last), ...people.map(orgLast)].filter(Boolean).sort().at(-1) || "" };
   });
@@ -372,7 +372,7 @@ function orgTableChildren(d, seen = new Set()) {
   for (const r of d.pages.flatMap(r => (r.children || []).map(byPath).filter(Boolean)).filter(r => !next.has(r.path) && !personAsOrg(r)))
     if (!named.has(orgName(r).toLowerCase()) || orgHidden(r)) named.set(orgHidden(r) ? r.path : orgName(r).toLowerCase(), r);
   return [...named.values()].map(r => {
-    const people = orgMembers(r), last = [known(r).last, ...people.map(orgLast)].filter(Boolean).sort().at(-1) || "";
+    const people = typeof orgMembership === "function" ? orgMembership(r).all : orgMembers(r), last = [known(r).last, ...people.map(orgLast)].filter(Boolean).sort().at(-1) || "";
     const child = orgTableRow({r, pages: [r], people, last, units: orgUnitNames(r)});
     child.ancestors = [...(d.ancestors || []), orgName(d.r)];
     child.children = orgTableChildren(child, next);
@@ -500,8 +500,9 @@ function svgEl(tag, attrs = {}, children = []) {
 }
 
 function orgView(r) {
-  const people = orgMembers(r), { tree } = orgUnitTree(r, people, []);
-  const v = { r, people, tree };
+  const fallbackAll = typeof orgMembership === "function" ? null : orgMembers(r);
+  const membership = fallbackAll ? { all: fallbackAll, direct: fallbackAll, descendant: [], totalCount: fallbackAll.length, directCount: fallbackAll.length, descendantCount: 0 } : orgMembership(r), people = membership.all, { tree } = orgUnitTree(r, people, []);
+  const v = { r, people, membership, tree };
   v.events = orgEvents(r, people);
   return v;
 }
@@ -533,22 +534,34 @@ function orgStage(v) {
 }
 function stripStaleOrgPeopleCount(text) {
   if (!text) return "";
-  return String(text)
+  const cleaned = String(text)
+    .replace(/\s*[（(]\s*(?:(?:no|\d+)\s*(?:people|person|contacts?|members?)|(?:0|\d+)\s*(?:个人|位联系人|位|人|名)|暂无联系人)\s*[)）]/gi, "")
     .split(/(?<=[。.!?！？])\s*/)
-    .filter(sent => !/(?:认识[^。.!?！？]{0,24}?\b\d+\s*(?:个人|位|人|名)|(?:没有|不)认识[^。.!?！？]{0,16}?(?:人|联系人)|\bknow(?:s)?\s+(?:no|\d+)\s+(?:people|person|contacts?|members?)\b)/i.test(sent))
+    .filter(sent => !/(?:认识[^。.!?！？]{0,24}?\b\d+\s*(?:个人|位|人|名)|(?:没有|不)认识[^。.!?！？]{0,16}?(?:人|联系人)|(?:暂无|目前没有|尚无)(?:已知)?(?:联系人|成员)|(?:共有|这里有)\s*\d+\s*(?:个人|位联系人|位|人|名)|\bknow(?:s)?\s+(?:no|\d+)\s+(?:people|person|contacts?|members?)\b|\b(?:has|have|with|includes?|currently|contains?|shows?)\s+(?:no|\d+)\s+(?:people|person|contacts?|members?)\b|^\s*(?:no|\d+)\s+(?:people|person|contacts?|members?)\b)/i.test(sent))
     .join(" ")
+    .replace(/\s{2,}/g, " ")
     .trim();
+  return cleaned;
 }
 function orgOpening(v) {
-  const cleanCount = txt => txt ? String(txt).split(/(?<=[。.!?！？])\s*/).filter(sent => !/(?:认识[^。.!?！？]{0,24}?\b\d+\s*(?:个人|位|人|名)|(?:没有|不)认识[^。.!?！？]{0,16}?(?:人|联系人)|\bknow(?:s)?\s+(?:no|\d+)\s+(?:people|person|contacts?|members?)\b)/i.test(sent)).join(" ").trim() : "";
-  const summary = cleanCount(orgSummary(known(v.r).summary));
-  const relation = cleanCount(orgRelation(v.r));
+  const fallbackPeople = v.people || [];
+  const membership = v.membership || (typeof orgMembership === "function" && v.r ? orgMembership(v.r) : { all: fallbackPeople, direct: fallbackPeople, descendant: [], totalCount: fallbackPeople.length, directCount: fallbackPeople.length, descendantCount: 0 });
+  const cleanStale = typeof stripStaleOrgPeopleCount === "function" ? stripStaleOrgPeopleCount : (s => s);
+  const summary = cleanStale(orgSummary(known(v.r).summary));
+  const relation = cleanStale(orgRelation(v.r));
   // Mapped organisations often have no History: their contacts still carry mail/index dates.
   const first = [...[v.r, ...v.people].flatMap(p => [facts(p).first, orgFact(p, "First contact")]),
     ...v.events.map(e => e.day)].filter(Boolean).sort()[0];
   const last = [known(v.r).last, ...v.people.map(orgLast), ...v.events.map(e => e.day)].filter(Boolean).sort().at(-1);
   const sentence = text => text ? text + (/[。.!?！？]$/.test(text) ? " " : uiLanguage === "zh" ? "。" : ". ") : "";
-  const count = uiLanguage === "zh" ? `你认识这里的 ${v.people.length} 个人。` : `You know ${v.people.length} ${v.people.length === 1 ? "person" : "people"} here. `;
+  const { totalCount, directCount, descendantCount } = membership;
+  const count = descendantCount > 0
+    ? (uiLanguage === "zh"
+      ? `你认识这里共 ${totalCount} 人（直接在本机构 ${directCount} 人，下属单位 ${descendantCount} 人）。`
+      : `You know ${totalCount} ${totalCount === 1 ? "person" : "people"} ${directCount ? "here" : "across its units"} (${directCount} direct, ${descendantCount} in subordinate units). `)
+    : (uiLanguage === "zh"
+      ? `你认识这里的 ${totalCount} 个人。`
+      : `You know ${totalCount} ${totalCount === 1 ? "person" : "people"} here. `);
   const through = [...v.people].sort((a, b) => orgLast(b).localeCompare(orgLast(a)) || a.title.localeCompare(b.title))
     .slice(0, 4).map(orgPersonLabel).join(uiLanguage === "zh" ? "、" : ", ");
   const recent = v.people.length > 4;
@@ -765,6 +778,22 @@ function orgMembers(r, seen = new Set()) {
   const people = [...(r.people || []).map(byPath), ...(r.children || []).flatMap(path => orgMembers(byPath(path), seen))]
     .filter(p => p && !p.service && !p.needs_review && p.path !== REM.owner);
   return [...new Map(people.map(p => [p.path, p])).values()];
+}
+// #3437: Single shared computed membership definition for org list, org tree, and org overview.
+function orgMembership(r) {
+  const all = orgMembers(r);
+  const directRaw = (r && !orgHidden(r) ? (r.people || []) : [])
+    .map(byPath)
+    .filter(p => p && !p.service && !p.needs_review && p.path !== REM.owner);
+  const direct = [...new Map(directRaw.map(p => [p.path, p])).values()];
+  const directPaths = new Set(direct.map(p => p.path));
+  const descendant = all.filter(p => !directPaths.has(p.path));
+  return {
+    all, direct, descendant,
+    totalCount: all.length,
+    directCount: direct.length,
+    descendantCount: descendant.length
+  };
 }
 function orgTeamLabel(p) {
   const names = (p.units || []).map(edge => byPath(edge.path)).filter(unit => unit && !orgHidden(unit)).map(orgName);
@@ -1564,5 +1593,75 @@ function sessionRecord(r, heading) {
     const message = r.session_messages?.find(m => m.source === source);
     sessionJump(message?.id || heading);
   });
+}
+
+// #3438: Memory changes uses the exact same local-time night window & change definition as Today's overnight summary,
+// never rendering "no changes last night" above a non-empty rewritten/updated page list.
+if (typeof UI !== "undefined" && UI.zh) {
+  Object.assign(UI.zh, {
+    "What the {date} pass changed in your notebook, each with its source. Rewritten pages are listed below.": "{date} 那次整理在笔记本里改了什么，每条附有来源。改写的页面列在下方。",
+    "No structured fact diffs last night; 1 page was rewritten below.": "昨晚没有结构化事实变动；下方列出了改写的 1 页。",
+    "No structured fact diffs last night; {n} pages were rewritten below.": "昨晚没有结构化事实变动；下方列出了改写的 {n} 页。",
+    "No structured fact diffs in the {date} pass; 1 page was rewritten below.": "{date} 那次整理没有结构化事实变动；下方列出了改写的 1 页。",
+    "No structured fact diffs in the {date} pass; {n} pages were rewritten below.": "{date} 那次整理没有结构化事实变动；下方列出了改写的 {n} 页。",
+    "No fact diffs in last night's runs; 1 page below has a recent metadata update.": "昨晚的运行没有正文事实变动；下方 1 页仅有近期更新时间记录。",
+    "No fact diffs in last night's runs; {n} pages below have recent metadata updates.": "昨晚的运行没有正文事实变动；下方 {n} 页仅有近期更新时间记录。",
+    "No fact diffs in the {date} pass; 1 page below has a recent metadata update.": "{date} 那次整理没有正文事实变动；下方 1 页仅有近期更新时间记录。",
+    "No fact diffs in the {date} pass; {n} pages below have recent metadata updates.": "{date} 那次整理没有正文事实变动；下方 {n} 页仅有近期更新时间记录。",
+    "No page content changed in the {date} pass": "{date} 那次整理没有页面正文变化",
+    "Recent metadata updates": "近期元数据更新",
+    "Date stamp updates": "仅日期标记更新",
+    "Last night's runs": "昨晚的运行"
+  });
+}
+if (typeof taskView === "function") {
+  const _baseTaskView = taskView;
+  taskView = function(kind) {
+    if (kind !== "changes") return _baseTaskView(kind);
+    const main = document.getElementById("main");
+    main.textContent = "";
+    main.appendChild(el("div", { class: "eyebrow", text: t("Today") }));
+    const pass = lastPass(), first = firstBuild(pass);
+    const isLastNight = !pass || pass.isLastNight !== false;
+    const passDate = pass?.localDate ? (typeof calendarDate === "function" ? calendarDate(pass.localDate) : fmtDate(pass.localDate)) : "";
+    const claims = first ? [] : (pass?.claims || []);
+    const runChanged = first ? [] : (pass?.runChanged ?? pass?.changed ?? []);
+    const stampChanged = first ? [] : (pass?.stampChanged || []);
+    main.appendChild(el("h1", { text: t("Memory changes") }));
+    main.appendChild(el("p", { class: "lede", text: isLastNight
+      ? t("What last night changed in your notebook, each with its source. Rewritten pages are listed below.")
+      : t("What the {date} pass changed in your notebook, each with its source. Rewritten pages are listed below.", { date: passDate }) }));
+    if (claims.length) {
+      main.appendChild(el("div", { class: "claim-grid standalone" }, claims.map(changeCard).filter(Boolean)));
+    } else if (runChanged.length) {
+      main.appendChild(el("p", { class: "quiet-line changes-summary", text: isLastNight
+        ? t(runChanged.length === 1 ? "No structured fact diffs last night; 1 page was rewritten below."
+          : "No structured fact diffs last night; {n} pages were rewritten below.", { n: runChanged.length })
+        : t(runChanged.length === 1 ? "No structured fact diffs in the {date} pass; 1 page was rewritten below."
+          : "No structured fact diffs in the {date} pass; {n} pages were rewritten below.", { date: passDate, n: runChanged.length }) }));
+    } else if (stampChanged.length) {
+      main.appendChild(el("p", { class: "quiet-line changes-summary", text: isLastNight
+        ? t(stampChanged.length === 1 ? "No fact diffs in last night's runs; 1 page below has a recent metadata update."
+          : "No fact diffs in last night's runs; {n} pages below have recent metadata updates.", { n: stampChanged.length })
+        : t(stampChanged.length === 1 ? "No fact diffs in the {date} pass; 1 page below has a recent metadata update."
+          : "No fact diffs in the {date} pass; {n} pages below have recent metadata updates.", { date: passDate, n: stampChanged.length }) }));
+    } else {
+      main.appendChild(emptyState(first ? "No changes yet — this is the first build."
+        : isLastNight ? "No page content changed last night"
+        : t("No page content changed in the {date} pass", { date: passDate })));
+    }
+    if (runChanged.length) {
+      main.appendChild(localDatesIn(el("div", { class: "changed-pages" }, [
+        sectionHead("Pages rewritten", isLastNight ? "Last night's runs" : passDate || "Current context"),
+        el("ul", { class: "hits" }, runChanged.map(r => row(r, { kind: true, hideZeroUsage: true })))])));
+    }
+    if (stampChanged.length) {
+      main.appendChild(localDatesIn(el("div", { class: "changed-pages metadata-updates" }, [
+        sectionHead("Recent metadata updates", "Date stamp updates"),
+        el("ul", { class: "hits" }, stampChanged.map(r => row(r, { kind: true, hideZeroUsage: true })))])));
+    }
+    main.appendChild(el("a", { class: "rem-activity", href: "#view=activity", text: t("REM activity →") }));
+    main.appendChild(el("a", { class: "rem-activity", href: "#reviews=1", text: t("Questions & connections →") }));
+  };
 }
 

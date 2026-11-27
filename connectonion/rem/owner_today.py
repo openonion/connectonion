@@ -46,12 +46,22 @@ def actions(root: Path) -> list[dict]:
             until = f" until {row['until'][:10]}" if row.get('until') else ''
             out.append({'at': row['at'], 'kind': 'mark', 'record': page,
                         'text': f"{WORDS.get(row.get('state'), row.get('state'))}{until}: {line}"})
+    from .config import read_config
+    from .day_plan import elapsed_appointment
+    now_moment = service.now()
+    zone = service.notebook_zone(read_config(root, validated=False))
     for file in sorted(state_path(root, 'drafts').glob('*.json')) if state_path(root, 'drafts').is_dir() else []:
         saved = read_json(file, {})
         if saved.get('status') == 'sent' and saved.get('sent_at', '') >= since:
             edited = ' (edited before sending)' if saved.get('prepared_body') and saved['prepared_body'] != saved.get('body') else ''
             out.append({'at': saved['sent_at'], 'kind': 'reply', 'record': saved.get('record', ''),
                         'text': f"replied to {saved.get('to', '')}{edited}: {saved.get('body', '')[:300]}"})
+        elif saved.get('status') == 'prepared':
+            elapsed = elapsed_appointment(f"{saved.get('subject', '')}\n{saved.get('body', '')}", now_moment, zone)
+            if elapsed is not None:
+                out.append({'at': saved.get('prepared_at') or now_moment.isoformat(), 'kind': 'elapsed-draft',
+                            'record': saved.get('record', ''),
+                            'text': f"prepared draft to {saved.get('to', '')} references elapsed time {elapsed.strftime('%Y-%m-%d %H:%M')} — recheck or reschedule instead of confirming"})
     for file in sorted(state_path(root, 'tasks').glob('do-*/receipt.json')) if state_path(root, 'tasks').is_dir() else []:
         task = read_json(file, {})
         at = task.get('finished_at') or task.get('started_at') or task.get('queued_at') or ''
