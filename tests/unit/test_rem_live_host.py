@@ -714,10 +714,13 @@ def test_an_agent_open_never_moves_the_host_and_a_busy_host_is_left_alone(startu
     assert live_host.ensure_online("owner") is None  # unfinished work keeps the Host where it is
 
 
-def test_manual_open_waits_for_the_installed_reader_build(startup, monkeypatch):
+@pytest.mark.parametrize("build", ["live", "file"])
+def test_manual_open_waits_for_the_installed_reader_build_when_a_page_is_saved(startup, monkeypatch, build):
     root = startup / "rem"
     root.mkdir()
     (root / "config.yaml").touch()
+    monkeypatch.setattr(reader, "_release", lambda: "0.0.1")
+    reader._publish(root, {build: ({f"{build}.html": "Previous reader"}, "", 0)}, [])
     queued = []
     monkeypatch.setattr(live_host, "_upgrade", lambda *a, **k: live_host.REPLACE)
     monkeypatch.setattr(reader, "owner_changed", lambda path: queued.append(path) or True)

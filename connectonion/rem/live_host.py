@@ -753,7 +753,7 @@ RENEW_WAIT = 30.0
 
 
 def _reader_preparation(directory: Path) -> Notice | None:
-    """An explicit open keeps the old Host until the installed build is ready."""
+    """An explicit open keeps the old Host while a saved reader page can be served."""
     from . import reader
 
     root = directory / "rem"
@@ -761,6 +761,9 @@ def _reader_preparation(directory: Path) -> Notice | None:
         return None
     installed = version_on_disk()
     if all(reader.saved(root, build).get("release") == installed for build in ("live", "full")):
+        return None
+    # A first open can switch immediately and let the installed Host render on demand.
+    if not any(reader._has_saved_page(root, name) for name in ("live.html", "file.html")):
         return None
     if reader.owner_changed(root):
         return Notice("The installed reader is preparing its pages; the existing reader stays available.")

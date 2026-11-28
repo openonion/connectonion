@@ -1398,9 +1398,9 @@ def _launch(path: Path, launch: bool) -> bool:
     return launch
 
 
-def _has_saved_page(root: Path) -> bool:
+def _has_saved_page(root: Path, name: str = "file.html") -> bool:
     try:
-        return _saved_page(root, "file.html") is not None
+        return _saved_page(root, name) is not None
     except CacheRefused:
         return False
 
