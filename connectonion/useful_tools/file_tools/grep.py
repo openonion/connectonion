@@ -75,7 +75,8 @@ def grep(
     except re.error as e:
         return ToolFailure(f"Error: Invalid regex pattern: {e}")
 
-    files = [base] if base.is_file() else _walk(base, file_pattern)
+    base_is_file = base.is_file()
+    files = [base] if base_is_file else _walk(base, file_pattern)
     walk_capped = False
 
     results = []
@@ -102,7 +103,8 @@ def grep(
         if not file_matches:
             continue
 
-        rel_path = _relative_path(file, base)
+        # A single named file is its own base, so relative_to() would say ".".
+        rel_path = str(base) if base_is_file else _relative_path(file, base)
 
         if output_mode == "files":
             results.append(str(rel_path))
@@ -114,21 +116,24 @@ def grep(
 
         elif output_mode == "content":
             results.append(f"\n{rel_path}:")
-            for line_num, line_text in file_matches[:10]:  # Limit per file
-                # Add context if requested
-                if context_lines > 0:
-                    start = max(0, line_num - 1 - context_lines)
-                    end = min(len(lines), line_num + context_lines)
-                    for ctx_i in range(start, end):
-                        prefix = ">" if ctx_i == line_num - 1 else " "
-                        results.append(f"  {prefix} {ctx_i + 1}: {lines[ctx_i]}")
+            shown = file_matches[:10]  # Limit per file
+            if context_lines > 0:
+                matched = {line_num for line_num, _ in shown}
+                for start, end in _context_windows(len(lines), shown, context_lines):
+                    for index in range(start, end):
+                        marker = ">" if index + 1 in matched else " "
+                        results.append(f"  {marker} {index + 1}: {lines[index]}")
                     results.append("")
-                else:
+                    total_matches += sum(1 for line_num, _ in shown if start < line_num <= end)
+                    if total_matches >= max_results:
+                        break
+            else:
+                for line_num, line_text in shown:
                     results.append(f"  {line_num}: {line_text}")
-                total_matches += 1
+                    total_matches += 1
 
-                if total_matches >= max_results:
-                    break
+                    if total_matches >= max_results:
+                        break
 
     capped = (f"\n\n... search stopped after {MAX_FILES} files; "
               "narrow `path` or set `file_pattern`") if walk_capped else ""
@@ -141,6 +146,19 @@ def grep(
         output += f"\n\n... results truncated at {max_results}"
 
     return output
+
+
+def _context_windows(line_count: int, matches, context_lines: int):
+    """Merge the per-match context windows so a shared line is printed once."""
+    windows = []
+    for line_num, _ in matches:
+        start = max(0, line_num - 1 - context_lines)
+        end = min(line_count, line_num + context_lines)
+        if windows and start <= windows[-1][1]:
+            windows[-1] = (windows[-1][0], max(windows[-1][1], end))
+        else:
+            windows.append((start, end))
+    return windows
 
 
 def _walk(base: Path, file_pattern: Optional[str]):
