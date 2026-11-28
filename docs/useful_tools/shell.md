@@ -63,6 +63,23 @@ result = shell.run_in_dir("pytest", "/path/to/tests")
 # Returns: "5 passed in 0.5s"
 ```
 
+## Output limit
+
+Output is capped at 10,000 characters to prevent token overflow. The `STDERR:`
+label and the `Exit code:` line are the tool's own, and they are never cut — so
+a long failing command does not read as a truncated success.
+
+When a command writes more than the cap, the budget is spent in this order:
+
+1. `Exit code:` — kept whole.
+2. stderr — gets the space first, because it is the part a caller acts on.
+3. stdout — whatever is left.
+
+Each stream that overflows ends with a note of what was dropped, e.g.
+`... (stderr truncated, 12,000 total chars)`. When both streams overflow, each
+keeps enough budget for its own note, so a large stderr cannot drop stdout
+without saying so.
+
 ## Use with Agent
 
 ```python

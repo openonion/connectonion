@@ -32,6 +32,11 @@ import subprocess
 # truncated success, and dropping stderr hides the error that explains it.
 MAX_OUTPUT_CHARS = 10_000
 
+# Room for one "... (stream truncated, N total chars)" note. When both streams
+# overflow, each keeps this much back so neither can be dropped without saying
+# so -- a stderr that filled the whole cap used to erase stdout entirely.
+TRUNCATION_NOTE_RESERVE = 64
+
 
 def _utf8_env() -> dict:
     """Child env that forces UTF-8 I/O regardless of the console codepage.
@@ -117,10 +122,15 @@ class Shell:
         stdout = result.stdout.rstrip() if result.stdout else ""
 
         # Truncate the command's streams, never the lines this tool adds.
-        # Stderr gets the space first because it is the part a caller acts on.
+        # Stderr gets the space first because it is the part a caller acts on,
+        # but it cannot spend the last note's worth of budget when stdout also
+        # has something to say, or a huge stderr would silently erase stdout.
         remaining = MAX_OUTPUT_CHARS - (len(status) + 1 if status else 0)
         if stderr:
-            stderr = _fit(stderr, remaining - 1, "stderr")
+            stderr_budget = remaining - 1
+            if stdout:
+                stderr_budget -= TRUNCATION_NOTE_RESERVE
+            stderr = _fit(stderr, max(0, stderr_budget), "stderr")
             remaining -= len(stderr) + 1
         if stdout:
             stdout = _fit(stdout, remaining, "stdout")
