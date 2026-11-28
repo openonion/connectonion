@@ -87,6 +87,14 @@ Read file with line numbers. Automatically tracks MD5 snapshot.
 
 **Returns:** File contents with line numbers (format: `42→code`)
 
+**Encoding:** the file's byte-order mark decides the codec — UTF-8, UTF-16 LE/BE,
+or UTF-32 LE/BE (checked longest-first, since UTF-32 LE's mark starts with UTF-16
+LE's). Files without a mark are read as UTF-8, exactly as before, and bytes that
+are not valid in the chosen codec become `U+FFFD`. So a file saved with a UTF-8
+mark no longer shows an invisible `\ufeff` on line 1, and a UTF-16 export is
+text instead of NUL-separated mojibake. Encodings that declare nothing (GBK,
+Latin-1) are still not guessed.
+
 ### `edit(file_path, old_string, new_string, replace_all=False)`
 Replace string in file. Validates read-before-edit and detects stale reads.
 
