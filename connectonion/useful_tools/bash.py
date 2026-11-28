@@ -5,7 +5,7 @@ LLM-Note:
   Data flow: receives command: str, description: str, cwd: str, timeout: int → subprocess.run() locally or cancellable Popen in hosted mode → captures stdout+stderr → truncates if >10000 chars → returns formatted output: str
   State/Effects: executes shell commands | hosted runs use an isolated process group so OIP Stop terminates descendants | no persistent state | reads/writes filesystem based on command | can have any side effect depending on command (network calls, file operations, etc.)
   Integration: exposes bash(command, description="", cwd, timeout) function | used as agent tool | description is OPTIONAL (defaults "") — an LLM is prompted to fill it for the approval UI, but direct/programmatic callers (remote.call, co call, scripts) can pass command alone | not passed to shell | on Windows runs Git Bash, or cmd /c when there is none
-  Performance: timeout default 120s; explicit caller values are honored | truncates output >10000 chars to prevent token overflow | synchronous execution (blocks until command completes)
+  Performance: timeout default 120s; explicit caller values are honored | truncates output >10000 chars to prevent token overflow, keeping stderr and the exit code | synchronous execution (blocks until command completes)
   Errors: propagates subprocess.TimeoutExpired so callers can distinguish timeout from success | non-zero exit codes included in output | stderr merged with stdout
 
 Bash tool for executing terminal commands.
@@ -32,6 +32,15 @@ import subprocess
 import time
 
 from ..core.interrupt import UserInterrupt
+
+# Output cap for one command. The tool's own lines (stderr and the exit code)
+# are kept inside it instead of being truncated away with the command output.
+MAX_OUTPUT_CHARS = 10000
+
+# Room for one "... (stream truncated, N total chars)" note. When both streams
+# overflow, each keeps this much back so neither can be dropped without saying
+# so -- a stderr that filled the whole cap used to erase stdout entirely.
+TRUNCATION_NOTE_RESERVE = 64
 
 
 def bash(
@@ -75,22 +84,38 @@ def bash(
     except FileNotFoundError:
         return f"Error: {_argv(command)[0]} not found. This tool requires a bash shell."
 
-    parts = []
-    if result.stdout:
-        parts.append(result.stdout.rstrip())
-    if result.stderr:
-        parts.append(f"STDERR:\n{result.stderr.rstrip()}")
-    if result.returncode != 0:
-        parts.append(f"\nExit code: {result.returncode}")
+    status = f"Exit code: {result.returncode}" if result.returncode != 0 else ""
+    stderr = f"STDERR:\n{result.stderr.rstrip()}" if result.stderr else ""
+    stdout = result.stdout.rstrip() if result.stdout else ""
 
-    output = "\n".join(parts) if parts else "(no output)"
+    # Truncate the command's streams, never the lines this tool adds: dropping
+    # the exit code makes a failed command read as a truncated success, and
+    # dropping stderr hides the error that explains the failure. Stderr gets
+    # the space first because it is the part a caller acts on, but it cannot
+    # spend the last note's worth of budget when stdout also has something to
+    # say, or a huge stderr would silently erase stdout.
+    remaining = MAX_OUTPUT_CHARS - (len(status) + 1 if status else 0)
+    if stderr:
+        stderr_budget = remaining - 1
+        if stdout:
+            stderr_budget -= TRUNCATION_NOTE_RESERVE
+        stderr = _fit(stderr, max(0, stderr_budget), "stderr")
+        remaining -= len(stderr) + 1
+    if stdout:
+        stdout = _fit(stdout, remaining, "stdout")
 
-    # Truncate large outputs
-    max_chars = 10000
-    if len(output) > max_chars:
-        output = output[:max_chars] + f"\n... (truncated, {len(output):,} total chars)"
+    output = "\n".join(part for part in (stdout, stderr, status) if part)
+    return output or "(no output)"
 
-    return output
+
+def _fit(text: str, budget: int, label: str) -> str:
+    """Cut ``text`` to ``budget`` characters, keeping a note of what was dropped."""
+    if len(text) <= budget:
+        return text
+    note = f"\n... ({label} truncated, {len(text):,} total chars)"
+    if len(note) >= budget:
+        return text[:max(0, budget)]
+    return text[: budget - len(note)] + note
 
 
 def _argv(command: str) -> list:
