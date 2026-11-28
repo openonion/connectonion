@@ -1055,14 +1055,15 @@ Example:  co rem upgrade status
 Options:  --channel stable|preview|pinned  Select the release channel for upgrades.
           --pin VERSION                    Pin to one release and stop auto-upgrading past it.
           --time HH:MM                     Local daily time for the upgrade job (default 01:00).
-          --dry-run                        Check PyPI and install eligibility without changing files.
-          --scheduled                      Used by launchd/systemd; keeps non-fatal logs quiet.
+          --dry-run                        Check PyPI and install eligibility without installing.
+          --scheduled                      Used by launchd/systemd; respects the auto-upgrade opt-out.
           --morning-time HH:MM             Local daily time to open the REM reader in a GUI session.
           --disable-morning                Turn off and remove the morning REM reader job.
-Effects:  Stages and verifies the new uv tool install before swapping, leaving the previous
-          co intact on any failure. After an upgrade succeeds, prewarms the REM reader HTML
-          cache and replaces an idle live Host on the same stable port. Never modifies
-          editable checkouts, project virtualenvs or system-managed Python installs.
+Effects:  Opening the default reader registers a missing daily job for an eligible uv tool
+          install. The job stages and verifies the official PyPI release before swapping.
+          The installed reader rebuilds an incompatible derived index under the maintenance
+          lock before publishing its cache. An owned Host switches on its existing port
+          once idle. Upgrade and reader failures appear in co rem upgrade status.
 Next:     co rem status
 Back:     co rem --help
 ```

@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -188,6 +189,8 @@ def _fetch_json(url: str) -> dict[str, Any]:
 
 def latest_pypi_version(channel: str, *, fetch=None) -> str:
     """Return the newest non-yanked PyPI version matching `stable` or `preview`."""
+    if channel not in ("stable", "preview"):
+        raise RemError(f"Unsupported ConnectOnion release channel: {channel!r}")
     data = (fetch or _fetch_json)(PYPI_URL)
     releases = data.get("releases") if isinstance(data, dict) else {}
     candidates: list[Version] = []
@@ -228,81 +231,59 @@ def rem_turn_active(root: Path | None) -> bool:
     return False
 
 
-def prewarm_reader(root: Path, python_bin: Path) -> bool:
-    """Rebuild live.html + data.json and trigger idle Host replacement using the newly installed Python."""
-    if not (root / "config.yaml").is_file() or not python_bin.is_file():
-        return False
+def _wait_for_idle_notebook(root: Path, *, scheduled: bool) -> bool:
+    deadline = time.monotonic() + (15 * 60 if scheduled else 0)
+    while rem_turn_active(root):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(5)
+    return True
+
+
+def _prewarm_installed_reader(root: Path, directory: Path | None) -> str:
+    """Prepare the reader with the installed release before considering Host replacement."""
+    from . import live_host, reader
+
+    if not reader.refresh(root):
+        return "build_busy"
+    if directory is not None:
+        return live_host.renew_idle(directory=directory)
+    return "ready"
+
+
+def prewarm_reader(root: Path, python_bin: Path, *, directory: Path | None, run) -> str:
+    """Wait for the installed worker and propagate preparation or restart failures."""
+    if not (root / "config.yaml").is_file():
+        return "no_notebook"
+    cmd = [
+        str(python_bin), "-I", "-c",
+        "import sys; from pathlib import Path; "
+        "from connectonion.rem.auto_upgrade import _prewarm_installed_reader; "
+        "print(_prewarm_installed_reader(Path(sys.argv[1]), Path(sys.argv[2]) if sys.argv[2] else None))",
+        str(root.resolve()), str(directory) if directory is not None else "",
+    ]
+    result = run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=900)
+    if result.returncode:
+        error = (result.stderr or result.stdout).strip().splitlines()
+        raise RemError(error[-1] if error else f"reader worker exited with status {result.returncode}")
+    status = result.stdout.strip().splitlines()
+    if not status or status[-1] not in {"ready", "build_busy", "busy", "restarted", "unchanged", "kept"}:
+        raise RemError("reader worker returned no recognized result")
+    return status[-1]
+
+
+def _finish_reader_upgrade(home: Path, root: Path, python: Path, upgrade: dict, *, run) -> dict:
+    directory = _co_dir(home)
     try:
-        subprocess.Popen(
-            [str(python_bin), "-m", "connectonion.rem.reader", str(root.resolve()), "live", "full"],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-        return True
-    except OSError:
-        return False
-
-
-def refresh_host_agent_after_upgrade(
-    home_dir: Path,
-    python_bin: Path,
-    *,
-    agents_dir: Path | None = None,
-    uid: int | None = None,
-    run=subprocess.run,
-    platform: str | None = None,
-) -> dict[str, Any]:
-    """On macOS, refresh `ai.openonion.rem-host` plist to the new binary and kickstart it in `gui/$UID` (#3317)."""
-    plat = platform or sys.platform
-    if plat != "darwin":
-        return {"refreshed": False, "reason": "non-macOS"}
-    from . import live_host
-
-    resolved_agents = Path(agents_dir) if agents_dir is not None else home_dir / "Library" / "LaunchAgents"
-    if not live_host.host_agent_installed(agents_dir=resolved_agents):
-        return {"refreshed": False, "reason": "not installed"}
-    co_dir = _co_dir(home_dir)
-    saved = read_json(co_dir / "rem-live-host.json", {})
-    port = saved.get("port") if isinstance(saved, dict) and isinstance(saved.get("port"), int) else None
-    installed = live_host.install_host_agent(
-        co_dir,
-        port=port,
-        python_bin=python_bin,
-        agents_dir=resolved_agents,
-        uid=uid,
-        run=run,
-        platform=plat,
-    )
-    if not installed.get("installed"):
-        return {"refreshed": False, "reason": installed.get("error") or "install failed"}
-    kicked = live_host.kickstart_host_agent(
-        uid=uid,
-        agents_dir=resolved_agents,
-        run=run,
-        platform=plat,
-    )
-    if kicked.get("ok") and isinstance(saved, dict) and saved.get("address"):
-        updated = {
-            **saved,
-            "port": installed["port"],
-            "command": " ".join(installed["command"][1:]),
-            "session": "Aqua",
-            "via_launch_agent": True,
-            "label": live_host.REM_HOST_LABEL,
-        }
-        if kicked.get("pid"):
-            updated["pid"] = kicked["pid"]
-        write_json(co_dir / "rem-live-host.json", updated)
-    return {
-        "refreshed": bool(kicked.get("ok")),
-        "label": live_host.REM_HOST_LABEL,
-        "plist": installed.get("plist"),
-        "port": installed.get("port"),
-        "pid": kicked.get("pid"),
-        **({"error": kicked["error"]} if kicked.get("error") else {}),
-    }
+        status = prewarm_reader(root, python, directory=directory if root.resolve() == directory / "rem" else None, run=run)
+    except (OSError, RemError, subprocess.SubprocessError) as error:
+        return {**upgrade, "outcome": "failed", "phase": "reader", "prewarmed": False,
+                "error": f"Installed {upgrade['to']}; reader preparation or restart failed: {error}"}
+    if status == "build_busy":
+        return {**upgrade, "outcome": "deferred_reader", "phase": "reader", "prewarmed": False,
+                "reason": "Another reader build holds the lock; the existing build or the next check will retry."}
+    return {**upgrade, "prewarmed": status != "no_notebook", "reader": status,
+            **({"phase": "reader"} if status == "busy" else {})}
 
 
 def _now_iso() -> str:
@@ -314,18 +295,16 @@ def _install_spec(target: str) -> str:
 
 
 def _uv_install_args(uv: str, target: str, *, force: bool = False, offline: bool = False) -> list[str]:
-    args = [uv, "tool", "install"]
+    args = [uv, "tool", "install", "--no-config", "--default-index", "https://pypi.org/simple",
+            "--python", sys._base_executable]
     if force:
         args.append("--force")
     if offline:
         args.append("--offline")
     else:
         args.append("--refresh")
-    try:
-        if Version(target).is_prerelease:
-            args.append("--prerelease=allow")
-    except InvalidVersion:
-        pass
+    if Version(target).is_prerelease:
+        args.append("--prerelease=allow")
     args.append(_install_spec(target))
     return args
 
@@ -348,12 +327,16 @@ def run_atomic_upgrade(
     prewarm: bool = True,
     run=subprocess.run,
     fetch=None,
+    scheduled: bool = False,
 ) -> dict[str, Any]:
     """Check and atomically upgrade a uv-tool ConnectOnion install, preserving the old binary on any failure."""
     home_dir = _home_dir(home)
     rem_root = Path(root) if root is not None else home_dir / ".co" / "rem"
     config = read_upgrade_config(home_dir)
     installed = current_version()
+
+    if scheduled and not config["enabled"]:
+        return {"outcome": "disabled", "current": installed, "at": _now_iso()}
 
     install_info = detect_install_method()
     if not install_info.get("supported"):
@@ -389,6 +372,13 @@ def run_atomic_upgrade(
 
     try:
         if Version(target) <= Version(installed):
+            prior = read_upgrade_state(home_dir)
+            if (prewarm and not dry_run and prior.get("phase") == "reader"
+                    and prior.get("root") == str(rem_root.resolve()) and prior.get("to") == installed):
+                upgrade = _upgrade_result(prior.get("from", installed), installed, config["channel"], rem_root)
+                result = _finish_reader_upgrade(home_dir, rem_root, _tool_python(Path(install_info["uv_tool_dir"])),
+                                                upgrade, run=run)
+                return write_upgrade_state(result, home_dir)
             result = {
                 "outcome": "up_to_date",
                 "current": installed,
@@ -401,7 +391,7 @@ def run_atomic_upgrade(
         if target == installed:
             return write_upgrade_state({"outcome": "up_to_date", "current": installed, "target": target, "at": _now_iso()}, home_dir)
 
-    if rem_turn_active(rem_root):
+    if not _wait_for_idle_notebook(rem_root, scheduled=scheduled and not dry_run):
         result = {
             "outcome": "deferred_busy",
             "current": installed,
@@ -413,6 +403,9 @@ def run_atomic_upgrade(
 
     if dry_run:
         return {"outcome": "dry_run", "from": installed, "to": target, "channel": config["channel"], "at": _now_iso()}
+
+    if scheduled and not read_upgrade_config(home_dir)["enabled"]:
+        return {"outcome": "disabled", "current": installed, "at": _now_iso()}
 
     uv = find_uv()
     if not uv:
@@ -427,9 +420,29 @@ def run_atomic_upgrade(
 
     live_tools = Path(install_info["uv_tool_dir"])
     live_bin = Path(install_info["uv_bin_dir"])
-    base_env = os.environ.copy()
+    # The scheduler is authorized to install the official package only. Ignore uv
+    # environment overrides (indexes, constraints, find-links) and Python imports
+    # supplied by the caller. Set the two tool paths explicitly in each phase.
+    base_env = {key: value for key, value in os.environ.items()
+                if not key.startswith(("UV_", "PYTHON"))}
 
     # Phase 1: Stage into an isolated UV_TOOL_DIR and verify import + CLI before touching live `co`.
+    try:
+        _install_upgrade(uv, target, live_tools, live_bin, base_env, run)
+    except (OSError, RemError, subprocess.SubprocessError) as error:
+        return write_upgrade_state({
+            "outcome": "failed", "current": installed, "target": target,
+            "error": str(error)[:500], "at": _now_iso(),
+        }, home_dir)
+
+    upgrade = _upgrade_result(installed, target, config["channel"], rem_root)
+    if prewarm:
+        write_upgrade_state({**upgrade, "outcome": "preparing_reader", "phase": "reader"}, home_dir)
+        upgrade = _finish_reader_upgrade(home_dir, rem_root, _tool_python(live_tools), upgrade, run=run)
+    return write_upgrade_state(upgrade, home_dir)
+
+
+def _install_upgrade(uv, target, live_tools, live_bin, base_env, run) -> None:
     with tempfile.TemporaryDirectory(prefix="co-upgrade-stage-") as stage_raw:
         stage_tools = Path(stage_raw) / "tools"
         stage_bin = Path(stage_raw) / "bin"
@@ -437,38 +450,30 @@ def run_atomic_upgrade(
         staged = run(_uv_install_args(uv, target, force=True, offline=False), capture_output=True, text=True, env=stage_env, timeout=300)
         if staged.returncode != 0:
             err = (staged.stderr or staged.stdout or "staging uv tool install failed").strip()
-            return write_upgrade_state({
-                "outcome": "failed",
-                "current": installed,
-                "target": target,
-                "error": f"Staged install failed (previous version kept): {err[:400]}",
-                "at": _now_iso(),
-            }, home_dir)
+            raise RemError(f"Staged install failed (previous version kept): {err[:400]}")
 
         stage_co = _bin_co(stage_bin)
         stage_py = _tool_python(stage_tools)
-        verify_cmd = [str(stage_py), "-c", f"import connectonion; assert connectonion.__version__ == {target!r}"]
+        verify_cmd = [str(stage_py), "-I", "-c", f"import connectonion; assert connectonion.__version__ == {target!r}"]
         verified_py = run(verify_cmd, capture_output=True, text=True, env=stage_env, timeout=60)
         verified_cli = run([str(stage_co), "--version"], capture_output=True, text=True, env=stage_env, timeout=60)
         if verified_py.returncode != 0 or verified_cli.returncode != 0:
             err = (verified_py.stderr or verified_cli.stderr or "staged verification failed").strip()
-            return write_upgrade_state({
-                "outcome": "failed",
-                "current": installed,
-                "target": target,
-                "error": f"Staged verification failed (previous version kept): {err[:400]}",
-                "at": _now_iso(),
-            }, home_dir)
+            raise RemError(f"Staged verification failed (previous version kept): {err[:400]}")
 
         # Phase 2: Backup live tool dir, promote from warm cache, verify, or roll back immediately.
         live_pkg = live_tools / "connectonion"
         backup_pkg = live_tools / f".connectonion.backup-{os.getpid()}"
+        live_co = _bin_co(live_bin)
+        backup_co = Path(stage_raw) / "previous-co"
         had_backup = False
         try:
             if live_pkg.is_dir():
                 if backup_pkg.exists():
                     shutil.rmtree(backup_pkg)
                 shutil.copytree(live_pkg, backup_pkg, symlinks=True)
+                if live_co.is_file() or live_co.is_symlink():
+                    shutil.copy2(live_co, backup_co, follow_symlinks=False)
                 had_backup = True
 
             live_env = {**base_env, "UV_TOOL_DIR": str(live_tools), "UV_TOOL_BIN_DIR": str(live_bin)}
@@ -478,7 +483,6 @@ def run_atomic_upgrade(
             if promoted.returncode != 0:
                 raise RemError((promoted.stderr or promoted.stdout or "live swap failed").strip())
 
-            live_co = _bin_co(live_bin)
             check_live = run([str(live_co), "--version"], capture_output=True, text=True, env=live_env, timeout=60)
             if check_live.returncode != 0:
                 raise RemError((check_live.stderr or "post-swap co --version check failed").strip())
@@ -487,30 +491,20 @@ def run_atomic_upgrade(
                 if live_pkg.exists():
                     shutil.rmtree(live_pkg, ignore_errors=True)
                 shutil.move(str(backup_pkg), str(live_pkg))
-            return write_upgrade_state({
-                "outcome": "failed",
-                "current": installed,
-                "target": target,
-                "rolled_back": had_backup,
-                "error": f"Swap failed and rolled back to {installed}: {str(error)[:400]}",
-                "at": _now_iso(),
-            }, home_dir)
-        finally:
-            if backup_pkg.exists():
+                live_co.unlink(missing_ok=True)
+                if backup_co.is_file() or backup_co.is_symlink():
+                    shutil.copy2(backup_co, live_co, follow_symlinks=False)
+            if had_backup:
+                raise RemError(f"Swap failed and rolled back: {error}") from error
+            raise RemError(f"Swap failed: {error}") from error
+        else:
+            if had_backup:
                 shutil.rmtree(backup_pkg, ignore_errors=True)
 
-    new_python = _tool_python(live_tools)
-    did_prewarm = prewarm_reader(rem_root, new_python) if prewarm else False
-    host_agent = refresh_host_agent_after_upgrade(home_dir, new_python, run=run)
-    return write_upgrade_state({
-        "outcome": "upgraded",
-        "from": installed,
-        "to": target,
-        "channel": config["channel"],
-        "prewarmed": did_prewarm,
-        **({"host_agent_restarted": True} if host_agent.get("refreshed") else {}),
-        "at": _now_iso(),
-    }, home_dir)
+
+def _upgrade_result(installed: str, target: str, channel: str, root: Path) -> dict:
+    return {"outcome": "upgraded", "from": installed, "to": target, "target": target, "channel": channel,
+            "root": str(root.resolve()), "prewarmed": False, "at": _now_iso()}
 
 
 def resilient_shell_command(command: list[str], *, log_path: Path | None = None) -> list[str]:
@@ -662,6 +656,25 @@ class DailyUpgradeScheduler(_DailyCalendarJob):
     label = UPGRADE_LABEL
     description = "ConnectOnion daily atomic auto-upgrade"
     subcommand = ["rem", "upgrade", "run", "--scheduled"]
+
+    def _co_cmd(self) -> list[str]:
+        if self.command:
+            return list(self.command)
+        return [sys.executable, "-I", "-m", "connectonion.cli.main"]
+
+    def describe(self) -> dict[str, Any]:
+        job = super().describe()
+        if not job["installed"]:
+            return job
+        if self.platform == "darwin":
+            command = ["launchctl", "print", f"gui/{self.uid}/{self.label}"]
+        else:
+            command = ["systemctl", "--user", "is-active", "--quiet", f"{self.label}.timer"]
+        try:
+            result = self.run(command, capture_output=True, timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            return job
+        return {**job, "loaded": result.returncode == 0}
 
 
 class MorningReaderScheduler(_DailyCalendarJob):

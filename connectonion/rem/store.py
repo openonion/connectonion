@@ -15,6 +15,7 @@ import re
 import sqlite3
 import sys
 import time
+from contextlib import closing
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -135,13 +136,45 @@ def refresh(root: Path, groups=GROUPS) -> dict:
         cached = sync_caches(db, root)
         if rebuilt or cached:
             _vacuum(db)
+        rows = {table: db.execute(f"select count(*) from {table}").fetchone()[0] for table in TABLES}
+        built = db.execute("select 1 from meta where key = 'built_at'").fetchone()
+        if rebuilt or cached or not built:
             db.execute("insert or replace into meta values ('built_at', ?)",
                        (datetime.now(timezone.utc).isoformat(timespec="seconds"),))
-        rows = {table: db.execute(f"select count(*) from {table}").fetchone()[0] for table in TABLES}
     finally:
         db.close()
     return {"rebuilt": [group for group in GROUPS if group in rebuilt], "rows": rows,
             "seconds": round(time.monotonic() - started, 3)}
+
+
+def prepare_reader_index(root: Path) -> bool:
+    """Rebuild an existing incompatible index before a reader snapshot.
+
+    Missing indexes retain the reader's normal file-based behavior. Recheck
+    after taking the maintenance lock because another writer may have rebuilt it.
+    """
+    from .files import WRITE_WAIT_SECONDS, maintenance_lock
+
+    def incompatible():
+        file = db_path(root)
+        if not file.is_file():
+            return False
+        try:
+            with closing(sqlite3.connect(file.as_uri() + "?mode=ro", uri=True)) as db:
+                version = db.execute("select value from meta where key = 'schema_version'").fetchone()
+                built = db.execute("select 1 from meta where key = 'built_at'").fetchone()
+                return not version or version[0] != SCHEMA_VERSION or not built or db.execute(
+                    "pragma auto_vacuum").fetchone()[0] != 2
+        except sqlite3.DatabaseError:
+            return True
+
+    if not incompatible():
+        return False
+    with maintenance_lock(root, wait=WRITE_WAIT_SECONDS):
+        if not incompatible():
+            return False
+        refresh(root)
+    return True
 
 
 def refresh_safely(root: Path) -> dict:

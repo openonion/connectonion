@@ -149,6 +149,8 @@ def ensure_online(address: str, *, timeout: float = 20.0) -> str | None:
         if isinstance(held, Notice):
             return held
         if held is REPLACE:
+            if preparation := _reader_preparation(directory):
+                return preparation
             process, renewed = _renew(directory, saved, address, wait=timeout / 2), True
         elif _moves_to_session(directory, saved, address):
             _retire(saved)
@@ -750,31 +752,57 @@ def _kept(port: int, version, *, pid) -> str:
 RENEW_WAIT = 30.0
 
 
-def renew_idle() -> None:
-    """Replace our own idle Host of another version, from the detached page build.
+def _reader_preparation(directory: Path) -> Notice | None:
+    """An explicit open keeps the old Host while a saved reader page can be served."""
+    from . import reader
 
-    The build is the one piece of installed code a Host started before an upgrade
-    still runs (a new Python each time). So a reader tab that was open before the
-    upgrade works again on a reload with no command typed (D-60): its request
-    starts a build, and the build ends here. A busy Host, or one this install did
-    not start, is left as it is (_upgrade). Nothing on Windows (_started_here).
-    """
+    root = directory / "rem"
+    if not (root / "config.yaml").is_file():
+        return None
+    installed = version_on_disk()
+    if all(reader.saved(root, build).get("release") == installed for build in ("live", "full")):
+        return None
+    # A first open can switch immediately and let the installed Host render on demand.
+    if not any(reader._has_saved_page(root, name) for name in ("live.html", "file.html")):
+        return None
+    if reader.owner_changed(root):
+        return Notice("The installed reader is preparing its pages; the existing reader stays available.")
+    return Notice("The installed reader could not prepare its pages; the existing reader stays available.")
+
+
+def renew_idle(*, directory: Path | None = None) -> str:
+    """After a successful build, replace only the idle Host this install owns."""
     if NO_PS:
-        return
-    from ..project import selected_identity_dir
-    directory = selected_identity_dir()
+        return "kept"
+    verify = directory is not None
+    if directory is None:
+        from ..project import selected_identity_dir
+        directory = selected_identity_dir()
 
-    def due():
+    def decision():
         saved = read_json(directory / "rem-live-host.json", {})
         held = _upgrade(directory, saved, saved.get("address"), build=True) if saved.get("address") else None
-        return saved if held is REPLACE else None
-    if not due():  # without the lock: nearly every build ends here
-        return
+        return saved, held
+
+    def status(held):
+        if held is BUSY:
+            return "busy"
+        return "kept" if held else "unchanged"
+
+    _, held = decision()
+    if held is not REPLACE:
+        return status(held)
     from ..cli.co_ai.main import _owner_invite_lock
     with _owner_invite_lock(directory):
-        if saved := due():  # again: another build, or an open, may have replaced it meanwhile
-            process = _renew(directory, saved, saved["address"], background=True, wait=RENEW_WAIT)
-            print(f"Replaced the server from before the upgrade: co ai pid {process.pid} on port {_port(process.args)}.")
+        saved, held = decision()
+        if held is not REPLACE:
+            return status(held)
+        process = _renew(directory, saved, saved["address"], background=True, wait=RENEW_WAIT)
+        port = _port(process.args)
+        if verify and (port != saved["port"] or not answers(port, saved["address"])):
+            raise RemError(f"the new REM Host did not answer on port {saved['port']}; see rem-live-host.log")
+        print(f"Replaced the server from before the upgrade: co ai pid {process.pid} on port {port}.")
+        return "restarted"
 
 
 # The Host watches for an upgrade itself (#3112): the build that replaces an idle old Host (renew_idle) used to run
@@ -869,6 +897,8 @@ def start(address: str) -> str | None:
         if isinstance(held, Notice):
             return held
         if held is REPLACE:
+            if preparation := _reader_preparation(directory):
+                return preparation
             _renew(directory, saved, address, background=True)
             return None
         if saved.get("address") == address and _alive(saved):

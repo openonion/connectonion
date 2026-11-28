@@ -7,9 +7,10 @@ the open is the real command in its own process.
 """
 
 import json
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 import os
 import socket
+import sqlite3
 import subprocess
 import sys
 import time
@@ -20,6 +21,7 @@ import pytest
 
 import connectonion
 from connectonion import address
+from connectonion.rem import store
 from connectonion.rem.config import prepare
 from connectonion.rem.files import Notebook
 from tests import host_leak_guard
@@ -121,6 +123,10 @@ def upgraded(tmp_path, tmp_path_factory, monkeypatch):
 
 def test_open_after_an_upgrade_ends_on_a_host_of_the_installed_version(upgraded):
     old, port, owner, record = upgraded
+    index = store.db_path(record.parent / "rem")
+    with closing(sqlite3.connect(index)) as db, db:
+        db.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
+        db.execute("INSERT INTO meta VALUES ('schema_version', '2')")
     opened = subprocess.run([sys.executable, "-m", "connectonion.cli.main", "rem", "open", "--no-launch"],
                             capture_output=True, text=True, timeout=50)   # under the suite's 60 s
     assert opened.returncode == 0, opened.stdout + opened.stderr
@@ -130,6 +136,13 @@ def test_open_after_an_upgrade_ends_on_a_host_of_the_installed_version(upgraded)
     assert f"http://127.0.0.1:{port}/rem?token=" in opened.stdout
     info = _info(port)
     assert info["address"] == owner and info["version"] == connectonion.__version__
+
+    from connectonion.rem.live_host import reader_token
+    first = httpx.get(f"http://127.0.0.1:{port}/rem", params={"token": reader_token(record.parent)},
+                      follow_redirects=True, timeout=20)
+    assert first.status_code == 200 and "Alice Chen" in first.text
+    with closing(sqlite3.connect(index)) as db:
+        assert db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone() == (store.SCHEMA_VERSION,)
 
 
 def test_a_tab_open_before_the_upgrade_is_served_by_the_installed_version_with_no_command(upgraded):

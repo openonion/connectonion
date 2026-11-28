@@ -1081,6 +1081,8 @@ def _refresh_once(root: Path, builds):
     with _building(root) as mine:
         if not mine:
             return None
+        from .store import prepare_reader_index
+        index_rebuilt = prepare_reader_index(root)
         pending = _pending_builds(root)
         wanted = [build for build in ("live", "full", "file") if build in builds or build in pending]
         for build in pending:
@@ -1088,7 +1090,8 @@ def _refresh_once(root: Path, builds):
         for _ in range(3):
             started, version = _now(), reader_version(root)
             rows = {build: saved(root, build) for build in wanted}
-            stale = [build for build in wanted if _behind(rows[build], version, started)]
+            stale = [build for build in wanted if index_rebuilt or _behind(rows[build], version, started)]
+            index_rebuilt = False
             tree = None
             if any(_unchecked(rows[build], started) for build in wanted if build not in stale):
                 tree = tree_version(root)
@@ -1233,6 +1236,9 @@ def _first_page(root: Path, name: str, version: list, say) -> str:
             with _building(root) as mine:
                 if mine:
                     if (text := _read_page(root, name)) is None:
+                        from .store import prepare_reader_index
+                        if prepare_reader_index(root):
+                            version = reader_version(root)
                         together = [build]
                         as_of = datetime.now(timezone.utc).isoformat(timespec="seconds")  # one time for the set
                         _publish(root, {b: _render(root, b, as_of) for b in together}, version)
@@ -1392,9 +1398,9 @@ def _launch(path: Path, launch: bool) -> bool:
     return launch
 
 
-def _has_saved_page(root: Path) -> bool:
+def _has_saved_page(root: Path, name: str = "file.html") -> bool:
     try:
-        return _saved_page(root, "file.html") is not None
+        return _saved_page(root, name) is not None
     except CacheRefused:
         return False
 
