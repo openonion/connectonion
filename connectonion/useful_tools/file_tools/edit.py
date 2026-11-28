@@ -2,7 +2,7 @@
 Purpose: Edit tool for precise string replacement (Claude Code-style)
 LLM-Note:
   Dependencies: imports from [pathlib] | imported by [useful_tools/__init__]
-  Data flow: Agent calls edit(file_path, old_string, new_string) -> validates -> replaces -> writes
+  Data flow: Agent calls edit(file_path, old_string, new_string) -> validates -> matches verbatim first, then in the file's dominant line ending -> replaces -> writes back byte-for-byte, in the endings the matched span used
   State/Effects: reads and writes file on filesystem
   Integration: exposes edit(file_path, old_string, new_string) function | used as agent tool
   Errors: returns error if file not found | returns error if old_string not found | returns error if old_string not unique
@@ -16,6 +16,19 @@ Usage:
 from pathlib import Path
 
 from ...core.tool_result import ToolFailure
+
+
+def _dominant_newline(content: str) -> str:
+    """The line ending most lines in ``content`` use."""
+    crlf = content.count("\r\n")
+    lf_only = content.count("\n") - crlf
+    return "\r\n" if crlf > lf_only else "\n"
+
+
+def _with_newline(text: str, newline: str) -> str:
+    """Express ``text`` with ``newline``."""
+    normalised = text.replace("\r\n", "\n")
+    return normalised if newline == "\n" else normalised.replace("\n", "\r\n")
 
 
 def edit(
@@ -52,10 +65,39 @@ def edit(
     if not path.is_file():
         return ToolFailure(f"Error: '{file_path}' is not a file")
 
-    content = path.read_text(encoding="utf-8")
+    raw = path.read_bytes()
+    try:
+        content = raw.decode("utf-8")
+    except UnicodeDecodeError as e:
+        return ToolFailure(f"Error: '{file_path}' is not UTF-8 text: {e}")
 
-    # Check if old_string exists
-    count = content.count(old_string)
+    # Line endings belong to the file, not to the platform running the edit.
+    # Text-mode read+write converts a CRLF file to LF on Linux and an LF file to
+    # CRLF on Windows, so changing one line rewrites the whole file in a diff.
+    # Decode the bytes as they are and write back in the file's own style.
+    dominant = _dominant_newline(content)
+
+    # Try the caller's string exactly as written first. A file with mixed
+    # endings -- scraped fixtures, HTTP or mail dumps -- has no single style,
+    # and translating before matching would refuse edits on whichever sections
+    # use the minority ending. Only when the verbatim string is not there do we
+    # assume the caller wrote plain \n and express it in the file's style.
+    old_in_file = old_string
+    count = content.count(old_in_file)
+    if count == 0:
+        old_in_file = _with_newline(old_string, dominant)
+        count = content.count(old_in_file)
+
+    # new_string adopts the style of the span it replaces: the endings
+    # old_string actually used, or the file's dominant style for a single-line
+    # match (whose own text says nothing about endings).
+    if "\r\n" in old_in_file:
+        span_newline = "\r\n"
+    elif "\n" in old_in_file:
+        span_newline = "\n"
+    else:
+        span_newline = dominant
+    new_in_file = _with_newline(new_string, span_newline)
 
     if count == 0:
         # Try to help debug: show similar strings
@@ -89,14 +131,14 @@ def edit(
 
     # Perform replacement
     if replace_all:
-        new_content = content.replace(old_string, new_string)
+        new_content = content.replace(old_in_file, new_in_file)
         replaced_count = count
     else:
-        new_content = content.replace(old_string, new_string, 1)
+        new_content = content.replace(old_in_file, new_in_file, 1)
         replaced_count = 1
 
     # Write back
-    path.write_text(new_content, encoding="utf-8")
+    path.write_bytes(new_content.encode("utf-8"))
 
     if replace_all and replaced_count > 1:
         return f"Replaced {replaced_count} occurrences in '{file_path}'"

@@ -95,6 +95,18 @@ Replace string in file. Validates read-before-edit and detects stale reads.
 2. File must not have changed since read (MD5 check)
 3. `old_string` must be unique (or use `replace_all=True`)
 
+**Line endings:** the file's own endings are preserved — editing one line of a
+CRLF file does not rewrite the other lines, on any platform.
+
+- `old_string` is matched verbatim first, so a file with mixed endings can be
+  edited on either its CRLF or its LF sections. If the verbatim string is not
+  there, it is re-expressed in the file's dominant ending (`\r\n` only when
+  CRLF lines outnumber LF-only ones) and matched again.
+- A multi-line `new_string` adopts the endings of the span it replaces; for a
+  single-line match it follows the file's dominant ending.
+- The file must be UTF-8; anything else is reported as a `ToolFailure` and left
+  untouched.
+
 ### `multi_edit(file_path, edits)`
 Apply multiple edits atomically. All succeed or none applied.
 
