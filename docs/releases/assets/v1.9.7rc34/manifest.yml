@@ -1,0 +1,37 @@
+version: v1.9.7rc34
+images:
+  - file: task-draft-desktop.webp
+    alt: "Today task draft drawer with a labeled Write full screen action"
+    caption: "Write full screen appears beside More and Send."
+    scenario: "Open the prepared reply from a completed Codex task in the fictional REM notebook."
+    viewport: "1440x900, light"
+    commit: "694841393b1188f9245f0ee8f7808ee99a9058e0"
+    source_run: "https://github.com/openonion/connectonion/pull/3484"
+  - file: task-draft-phone.webp
+    alt: "Phone task draft drawer with the Write full screen button visible"
+    caption: "The labeled action fits the phone drawer."
+    scenario: "Open the prepared task reply at phone width."
+    viewport: "390x844, light"
+    commit: "694841393b1188f9245f0ee8f7808ee99a9058e0"
+    source_run: "https://github.com/openonion/connectonion/pull/3484"
+  - file: task-writer-phone.webp
+    alt: "Full-screen phone writer with the prepared task reply"
+    caption: "Tapping Write full screen opens the prepared reply in the writer."
+    scenario: "Tap the labeled action in the phone drawer."
+    viewport: "390x844, light"
+    commit: "694841393b1188f9245f0ee8f7808ee99a9058e0"
+    source_run: "https://github.com/openonion/connectonion/pull/3484"
+  - file: task-draft-before-desktop.webp
+    alt: "Previous desktop task draft drawer with an icon-only full-screen control"
+    caption: "The rc33 drawer showed only an expansion icon."
+    scenario: "Open the same prepared task reply on rc33."
+    viewport: "1440x900, light"
+    commit: "b7d9c7690e009205bed94ef76b4e2ab1fdcccbf2"
+    source_run: "https://github.com/openonion/connectonion/pull/3484"
+  - file: task-draft-before-phone.webp
+    alt: "Previous phone task draft drawer with an icon-only full-screen control"
+    caption: "The rc33 phone drawer also relied on the expansion icon."
+    scenario: "Open the same prepared task reply at phone width on rc33."
+    viewport: "390x844, light"
+    commit: "b7d9c7690e009205bed94ef76b4e2ab1fdcccbf2"
+    source_run: "https://github.com/openonion/connectonion/pull/3484"
