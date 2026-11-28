@@ -215,26 +215,18 @@ function cardDraft(draft, group, recheck = null) {
   const wrap = el("div", { class: "qdraft" + (recheck ? " qdraft-recheck" : "") }, [
     n > 1 ? el("p", { class: "quiet-line", text: t(n === 2 ? "One reply can answer both." : "One reply can answer all {n}.", { n }) }) : null,
     ...(banner ? [banner] : []), draftNode]);
-  // #3479: render a visible localized label on .mail-write directly beside Send/More (and keep after redraft).
-  // #3439: demote primary Send styling when the draft refers to an elapsed slot or unfilled placeholder.
-  const enhance = root => {
-    if (!root || typeof root.querySelectorAll !== "function") return;
-    for (const btn of root.querySelectorAll(".mail-write")) {
-      btn.classList.add("mail-write-labeled");
-      if (!btn.querySelector(".mail-write-label")) {
-        btn.appendChild(el("span", { class: "mail-write-label", text: t("Write full screen") }));
-      }
-    }
-    if (recheck) {
-      for (const sendBtn of root.querySelectorAll(".mail-actions > .btn-act")) {
+  // #3439: demote Send for recheck drafts, including when a redraft replaces the card.
+  if (recheck && typeof wrap.querySelectorAll === "function") {
+    const demoteSend = () => {
+      for (const sendBtn of wrap.querySelectorAll(".mail-actions > .btn-act")) {
         sendBtn.classList.remove("btn-act");
         sendBtn.classList.add("btn-line");
       }
+    };
+    demoteSend();
+    if (typeof MutationObserver === "function" && typeof Node !== "undefined" && wrap instanceof Node) {
+      new MutationObserver(demoteSend).observe(wrap, { childList: true, subtree: true });
     }
-  };
-  enhance(wrap);
-  if (typeof MutationObserver === "function" && typeof Node !== "undefined" && wrap instanceof Node) {
-    new MutationObserver(() => enhance(wrap)).observe(wrap, { childList: true, subtree: true });
   }
   return wrap;
 }

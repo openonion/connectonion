@@ -948,7 +948,9 @@ function replyDraftCard(draft, onSent, person, extra = {}) {
   const send = el("button", { type: "button", class: "btn-act", text: t("Send") });
   const edit = el("button", { type: "button", class: "btn-quiet edit-provider", text: t("Edit in {provider}", { provider }) });
   const skip = el("button", { type: "button", class: "btn-quiet", text: t("Skip"), ...snapshotWhy("This is an offline snapshot; open REM to mark it.") });
-  const write = el("button", { type: "button", class: "ibtn mail-write", "aria-label": t("Write full screen"), title: t("Write full screen") + " · R", "data-key": "r" }, [icon("expand")]);
+  const writeLabel = t("Write full screen");
+  const write = el("button", { type: "button", class: "ibtn mail-write mail-write-labeled", "aria-label": writeLabel, title: writeLabel + " · R", "data-key": "r" }, [
+    icon("expand"), el("span", { class: "mail-write-label", text: writeLabel })]);
   const to = mailbox(draft.to), who = personByAddress(to.address), channel = draft.channel || "mail";
   const reach = replyChannel(draft, who?.title || to.name);
   // Only channels this person can be reached on (#3302): the Host lists them from the person's page. A switch
