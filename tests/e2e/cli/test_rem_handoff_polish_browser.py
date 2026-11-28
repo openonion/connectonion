@@ -180,3 +180,63 @@ def test_a_long_finished_line_wraps_inside_a_today_card_on_a_phone(today):
     box = line.bounding_box()
     assert box['x'] + box['width'] <= 390 + 1
     assert box['height'] > 30  # it wrapped onto more than one line
+
+
+@pytest.mark.parametrize('size', [(1440, 900), (390, 844)])
+def test_completed_codex_task_draft_drawer_opens_full_screen(today, size):
+    page, calls, answers = today
+    width, height = size
+    page.set_viewport_size({'width': width, 'height': height})
+    draft = {
+        'id': 'draft-q3-receipts', 'status': 'prepared', 'provider': 'outlook', 'sources': [],
+        'to': 'Inès Halvorsen <ines@example.test>', 'from': 'avery@example.test',
+        'subject': 'Re: Q3 receipts',
+        'body': 'Hi Inès,\n\nI checked the Q3 receipts and can send the complete set on Thursday.\n\nAvery',
+    }
+    task = {
+        'id': 'a' * 32, 'agent': 'codex', 'result': 'completed', 'has_output': True,
+        'summary': 'Checked the Q3 receipts and drafted a reply.', 'reply': draft['body'],
+    }
+    answers['/rem/task'] = [(200, draft)]
+    page.evaluate("""task => {
+      REM.live = true;
+      const group = todayGroups(threadEntries().filter(entry => !isDone(entry)))[0];
+      keepTask(group.entries[0], task);
+      todayLead = group.r.path;
+      setInterfaceLanguage('en');
+    }""", task, isolated_context=False)
+
+    page.locator('.qcard').get_by_role('button', name='Draft with this reply', exact=True).click()
+    assert ('/rem/task', {'id': task['id'], 'action': 'prepare_reply'}) in calls
+    panel = page.locator('#evidence-panel')
+    panel.get_by_text('Reply draft prepared', exact=True).wait_for()
+    assert panel.get_by_role('region', name='Reply draft').is_visible()
+    actions = panel.locator('.mail-actions')
+    write = actions.get_by_role('button', name='Write full screen', exact=True)
+    assert write.is_visible()
+    assert write.inner_text().strip() == 'Write full screen'
+    assert actions.get_by_role('button', name='Send', exact=True).is_visible()
+    assert actions.get_by_label('More', exact=True).is_visible()
+    box = write.bounding_box()
+    assert 0 <= box['x'] <= box['x'] + box['width'] <= width
+    assert 0 <= box['y'] <= box['y'] + box['height'] <= height
+    if width == 390:
+        assert min(box['width'], box['height']) >= 44
+
+    shots = os.environ.get('CO_REM_SHOTS')
+    if shots:
+        page.screenshot(path=str(Path(shots) / f'handoff-draft-drawer-{width}.png'))
+    if width == 390:
+        write.click()
+    else:
+        write.press('Enter')
+    writer = page.locator('dialog.writer[open]')
+    writer.wait_for()
+    assert writer.get_by_role('textbox', name='Reply body').inner_text() == draft['body']
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    if shots:
+        page.screenshot(path=str(Path(shots) / f'handoff-fullscreen-writer-{width}.png'))
+    writer.get_by_role('button', name='Cancel' if width == 390 else 'Close', exact=True).click()
+    writer.wait_for(state='hidden')
+    assert write.is_visible()
+    assert not any(path in ('/rem/draft', '/rem/approve') for path, _ in calls)

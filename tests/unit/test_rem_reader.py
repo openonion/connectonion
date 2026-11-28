@@ -1616,11 +1616,12 @@ def test_thread_actions_show_drafts_and_discarded_state_without_copy_prompt():
     assert result['prepared']['class'] == 'mailcard'
     # [head, body, why, dock, status, what REM did]; the dock holds [choices, defect, actions] (#3312 B, H).
     actions = result['prepared']['children'][3]['children'][2]['children']
-    # Send is the one filled button; Write full screen stays in sight beside it as an icon named by its label
+    # Send is the one filled button; the labeled Write full screen control stays beside it
     # (sprint 22: behind 更多 the owner could not find it); editing in Gmail and Skip wait behind ⋯ (D-120).
     buttons = [actions[-1], actions[2], *actions[3]['children'][1]['children']]
     assert [button.get('text') or button.get('aria-label') for button in buttons if button['tag'] == 'button'] == [
         'Send', 'Write full screen', 'Edit in Gmail', 'Skip']
+    assert actions[2]['children'][-1]['text'] == 'Write full screen'
     assert result['actions']['children'][0]['href'] == '#r=people/avery.md&h=open-threads'
     assert result['actions']['children'][0]['text'] == 'Open the page'  # no archived thread identity
     assert result['actions']['children'][1]['text'] == 'Mark done'
