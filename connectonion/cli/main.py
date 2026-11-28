@@ -3606,6 +3606,10 @@ def _onenote_create(section: str = typer.Argument(..., help="Section number from
     handle_onenote_create(section, title, text, listing=listing)
 
 
+from .commands.onenote_source_commands import add_source_commands as _onenote_source_commands
+_onenote_source_commands(onenote_app)  # changes / show --json: the REM source contract (DD-081)
+
+
 # Microsoft Teams (#1907): chats, joined teams and channels on work/school sign-ins.
 teams_app = _typer_app(
     help="Your Microsoft Teams chats and joined teams (work or school accounts). Bare 'co teams' lists recent chats (Read-only); send previews by default and Sends only with --yes.",

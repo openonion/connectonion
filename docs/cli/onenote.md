@@ -48,6 +48,37 @@ co onenote read "Week 5"
 co onenote create "Lab notes" "Week 6" "From a script"
 ```
 
+## REM source commands
+
+`co onenote changes` and `co onenote show` are the two JSON commands a REM
+source answers (DD-081). Scope is passed on the command line; they read no REM
+state and write nothing, so they work the same from a plain shell:
+
+```bash
+co onenote ls --ids                                                  # find the section ID
+co onenote changes --since 2026-11-20T00:00:00Z --section 1-example --json
+co onenote show 0-example --section 1-example --json
+```
+
+- `changes --json` prints `{"since", "until", "items": [{"id", "version", "time", "title", "link"}]}`,
+  oldest change first. It reads page metadata only, never page content.
+  `until` is taken before the read starts; pass it as the next `--since`.
+  `version` and `time` are Graph's `lastModifiedDateTime`, the only page
+  revision marker OneNote exposes.
+- `show --json` prints `{"id", "version", "time", "created", "title", "text", "author": null, "link", "section_id", "notebook_id"}`.
+  It accepts `<id>` or `onenote:<id>`. With `--section`, a page filed in any
+  other section is refused before its content is read. Graph names no page
+  author, so `author` is `null`.
+- The section must be in the signed-in account's own notebook list
+  (`co onenote ls`). Text or titles that look like a credential are replaced
+  with `[withheld: possible credential]`; a link that is not https on a
+  Microsoft host, or that carries a token, is returned as `null`.
+- Exit 0 is a complete read, including an empty `items`. Exit 1 is a sign-in,
+  scope, Graph or paging failure; more than 1000 changed pages is refused, not
+  truncated. Exit 2 is an invalid argument, such as `--since` without a
+  timezone. Failures go to stderr with one `Next:` line; stdout never carries
+  a partial result.
+
 ## For agents
 
 ```python
