@@ -3267,6 +3267,11 @@ from .commands.mcp_commands import mcp_app
 app.add_typer(mcp_app, name="mcp")
 
 
+# Jira: read-only source commands, owned by the command module.
+from .commands.jira_commands import jira_app
+app.add_typer(jira_app, name="jira")
+
+
 # Obsidian: local Markdown notes with explicit folder selection.
 obsidian_app = _typer_app(
     help="Browse Obsidian vaults, find changed notes, and read or search selected notes. "
