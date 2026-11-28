@@ -2,7 +2,7 @@
 Purpose: Edit tool for precise string replacement (Claude Code-style)
 LLM-Note:
   Dependencies: imports from [pathlib] | imported by [useful_tools/__init__]
-  Data flow: Agent calls edit(file_path, old_string, new_string) -> validates -> replaces -> writes back byte-for-byte, in the file's own line endings
+  Data flow: Agent calls edit(file_path, old_string, new_string) -> validates -> matches verbatim first, then in the file's dominant line ending -> replaces -> writes back byte-for-byte, in the endings the matched span used
   State/Effects: reads and writes file on filesystem
   Integration: exposes edit(file_path, old_string, new_string) function | used as agent tool
   Errors: returns error if file not found | returns error if old_string not found | returns error if old_string not unique
@@ -16,6 +16,19 @@ Usage:
 from pathlib import Path
 
 from ...core.tool_result import ToolFailure
+
+
+def _dominant_newline(content: str) -> str:
+    """The line ending most lines in ``content`` use."""
+    crlf = content.count("\r\n")
+    lf_only = content.count("\n") - crlf
+    return "\r\n" if crlf > lf_only else "\n"
+
+
+def _with_newline(text: str, newline: str) -> str:
+    """Express ``text`` with ``newline``."""
+    normalised = text.replace("\r\n", "\n")
+    return normalised if newline == "\n" else normalised.replace("\n", "\r\n")
 
 
 def edit(
@@ -62,18 +75,29 @@ def edit(
     # Text-mode read+write converts a CRLF file to LF on Linux and an LF file to
     # CRLF on Windows, so changing one line rewrites the whole file in a diff.
     # Decode the bytes as they are and write back in the file's own style.
-    newline = "\r\n" if "\r\n" in content else "\n"
+    dominant = _dominant_newline(content)
 
-    def _in_file_style(text: str) -> str:
-        """Express ``text`` with this file's line endings."""
-        normalised = text.replace("\r\n", "\n")
-        return normalised if newline == "\n" else normalised.replace("\n", "\r\n")
-
-    old_in_file = _in_file_style(old_string)
-    new_in_file = _in_file_style(new_string)
-
-    # Check if old_string exists
+    # Try the caller's string exactly as written first. A file with mixed
+    # endings -- scraped fixtures, HTTP or mail dumps -- has no single style,
+    # and translating before matching would refuse edits on whichever sections
+    # use the minority ending. Only when the verbatim string is not there do we
+    # assume the caller wrote plain \n and express it in the file's style.
+    old_in_file = old_string
     count = content.count(old_in_file)
+    if count == 0:
+        old_in_file = _with_newline(old_string, dominant)
+        count = content.count(old_in_file)
+
+    # new_string adopts the style of the span it replaces: the endings
+    # old_string actually used, or the file's dominant style for a single-line
+    # match (whose own text says nothing about endings).
+    if "\r\n" in old_in_file:
+        span_newline = "\r\n"
+    elif "\n" in old_in_file:
+        span_newline = "\n"
+    else:
+        span_newline = dominant
+    new_in_file = _with_newline(new_string, span_newline)
 
     if count == 0:
         # Try to help debug: show similar strings

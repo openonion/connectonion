@@ -86,3 +86,43 @@ def test_a_missing_string_reports_the_file_unchanged(tmp_path):
 
     assert "String not found" in result
     assert path.read_bytes() == b"alpha\r\nbeta\r\n"
+
+
+def test_a_mixed_ending_file_can_be_edited_on_its_lf_section(tmp_path):
+    # A single stray \r\n must not make the whole file count as CRLF: the LF
+    # sections are still matched verbatim.
+    path = tmp_path / "mixed.txt"
+    path.write_bytes(b"header\r\nbody one\nbody two\nfooter\n")
+
+    result = edit(str(path), "body one\nbody two", "body uno\nbody dos")
+
+    assert "Successfully edited" in result
+    assert path.read_bytes() == b"header\r\nbody uno\nbody dos\nfooter\n"
+
+
+def test_a_mixed_ending_file_can_be_edited_on_its_crlf_section(tmp_path):
+    path = tmp_path / "mixed.txt"
+    path.write_bytes(b"header\r\nbody one\nbody two\nfooter\n")
+
+    result = edit(str(path), "header\r\nbody one", "head\r\nbody uno")
+
+    assert "Successfully edited" in result
+    assert path.read_bytes() == b"head\r\nbody uno\nbody two\nfooter\n"
+
+
+def test_multi_line_new_string_follows_an_lf_majority(tmp_path):
+    path = tmp_path / "mixed.txt"
+    path.write_bytes(b"keep\r\none\ntwo\nthree\n")
+
+    edit(str(path), "two", "second\nthird")
+
+    assert path.read_bytes() == b"keep\r\none\nsecond\nthird\nthree\n"
+
+
+def test_multi_line_new_string_follows_a_crlf_majority(tmp_path):
+    path = tmp_path / "mixed.txt"
+    path.write_bytes(b"a\r\nb\r\nc\r\nstray\n")
+
+    edit(str(path), "b", "b1\nb2")
+
+    assert path.read_bytes() == b"a\r\nb1\r\nb2\r\nc\r\nstray\n"
