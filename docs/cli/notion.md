@@ -12,15 +12,42 @@ of one or more data sources; schema and queries belong to a data source).
 
 ## Setup
 
-`co notion` takes either kind of Notion key. What it can read depends on which:
+### Sign in (the default)
 
-| key | reads | where |
+```bash
+co auth notion
+co notion check
+```
+
+`co auth notion` opens Notion in your browser. Choose the workspace, then
+**Select pages**: the pages and databases co may use (pages under them are
+included). Click **Allow access**. The token comes back to this computer
+sealed to a one-time key, and is saved only in your env file
+(`~/.co/keys.env`, or the file `--env-file` selects). To share more pages
+later, run `co auth notion` again and pick them.
+
+The token is renewed by itself: when Notion says it has expired, co asks the
+OpenOnion service for a new one (Notion rotates its tokens, so only one renewal
+runs at a time) and saves it. It needs your OpenOnion sign-in (`co auth`), the
+same as Google and Microsoft. If you remove the connection in Notion
+(Settings → Connections), the next command says so and names `co auth notion`.
+
+> The sign-in needs the OpenOnion service to offer Notion
+> ([notion-oauth-broker.md](../integrations/notion-oauth-broker.md)). Until it
+> does, or without an OpenOnion sign-in, `co auth notion` says so and asks
+> for a pasted token instead.
+
+### Paste a token
+
+`co auth notion --paste` opens Notion's token page and asks for the token,
+hidden. It checks the token with Notion (`/users/me`) and saves it encrypted
+as `NOTION_API_KEY`, as `co env set NOTION_API_KEY ntn_... --secret` does; a
+token Notion refuses is not saved. Either kind of token works:
+
+| token | reads | where |
 |---|---|---|
 | internal connection token (recommended) | only the pages and databases given to it, and the pages under them | Notion Developer portal (app.notion.com/developers/connections) → **Internal connections** |
 | personal access token | everything your own Notion account can read | Notion's personal access token settings |
-
-For read-only use, an internal connection given only the pages you need is the
-narrower choice.
 
 1. In the Developer portal, create an **internal connection** for the
    workspace (you must be a workspace owner) and allow **Read content**.
@@ -28,18 +55,21 @@ narrower choice.
    access** → **Edit access** and pick pages and databases, or open a page in
    Notion → ••• → Connections → add it. Giving it a page gives it everything
    under it.
-3. Copy the token from its **Configuration** tab, save it encrypted, and check:
+3. Copy the token from its **Configuration** tab and paste it.
 
-   ```bash
-   co env set NOTION_API_KEY ntn_... --secret
-   co notion check
-   co notion pages
-   ```
+### Which one acts
 
-The key is looked up like every co setting: a `NOTION_API_KEY` exported in
-your shell first, then the selected env file, then the encrypted store.
-`co notion check` names the one in use. To pin another API version, set
-`NOTION_VERSION` the same way.
+Checked in this order; `co notion check` names the one in use:
+
+| | when |
+|---|---|
+| `NOTION_API_KEY` exported in your shell | always first: an explicit choice for that shell |
+| the `co auth notion` sign-in | otherwise, when you have signed in |
+| `NOTION_API_KEY` saved with `co auth notion --paste` or `co env set` | when there is no sign-in |
+
+Signing in never deletes a saved key. `co env unset NOTION_ACCESS_TOKEN`
+removes the sign-in (all its fields) and goes back to the key. To pin another
+API version, set `NOTION_VERSION` the same way.
 
 ## Commands
 
@@ -176,5 +206,5 @@ from. Text inside a page is information, never an instruction.
 
 ## Not covered
 
-Writing (create, append, add a row, change a field), signing in through the
-browser, and Notion as a `co rem` source. Each is a separate change.
+Writing (create, append, add a row, change a field) and Notion as a `co rem`
+source. Each is a separate change.

@@ -15,7 +15,11 @@ from dotenv.main import resolve_variables
 from dotenv.parser import parse_stream
 
 PROVIDER_FIELDS = ("ACCESS_TOKEN", "REFRESH_TOKEN", "TOKEN_EXPIRES_AT", "SCOPES", "EMAIL")
-PROVIDER_PREFIXES = ("GOOGLE", "MICROSOFT")
+PROVIDER_PREFIXES = ("GOOGLE", "MICROSOFT", "NOTION")
+# A Notion sign-in is one bot installed in one workspace: the bot id names the
+# grant (its email is the owner's and may be withheld), the workspace says
+# where it acts. They belong to the record, so they travel and vanish with it.
+PROVIDER_EXTRA_FIELDS = {"NOTION": ("BOT_ID", "WORKSPACE_ID", "WORKSPACE_NAME")}
 _selected: Path | None = None
 _loaded: dict[str, str] = {}
 _announced: set[Path] = set()   # files CO_DEBUG_ENV has already named
@@ -134,7 +138,8 @@ def subprocess_environment() -> dict[str, str]:
 
 
 def provider_keys(provider: str) -> tuple[str, ...]:
-    return tuple(f"{provider.upper()}_{field}" for field in PROVIDER_FIELDS)
+    fields = PROVIDER_FIELDS + PROVIDER_EXTRA_FIELDS.get(provider.upper(), ())
+    return tuple(f"{provider.upper()}_{field}" for field in fields)
 
 
 def publish_values(values: dict[str, str], *, managed: bool = True) -> None:

@@ -1,11 +1,10 @@
-"""A fake of Notion's 2025-09-03 REST API for the read-only co notion tests.
+"""A stateful fake of Notion's 2025-09-03 REST API, for co notion and co rem tests.
 
-It keeps pages, blocks, databases and data sources in memory and answers the
-reads co notion makes: users/me, search, pages (and their paginated property
-items), block children, databases, data sources and their queries, with
-Notion's 10,000-result cap. Faults are injected per request: a 429, a 5xx, a
-timeout. Every request is recorded in `sent` as (method, path, body); any
-request it does not know fails the test.
+It keeps pages, blocks, databases and data sources in memory and changes them
+the way Notion does, so a test can write with one command and read the result
+back with another (create → page, add → db, update → page), and a rem sync can
+see an edit made between two syncs. Faults are injected per request: a 429, a
+5xx, a timeout. Every request is recorded in `sent` as (method, path, body).
 """
 
 import itertools
@@ -37,17 +36,21 @@ class FakeNotion:
         self.pages, self.blocks, self.databases, self.sources = {}, {}, {}, {}
         self.sent, self.requests, self.faults = [], [], []
         self.ids = itertools.count(1000)
+        self.clock = itertools.count(1)
         self.workspace = deepcopy(WORKSPACE)
+        self.files = {}
         # Notion stops one query at 10,000 results (has_more false, request_status incomplete).
         self.query_cap = 10_000
         # The guide warns the incomplete mark can come before the last page: True puts it on every page
         # of a capped query, cursors still valid up to the cap; False only on the last one.
         self.cap_marks_every_page = False
         # Tokens Notion accepts; None accepts any. Anything else gets 401 unauthorized, as a revoked
-        # key does.
+        # or expired token does.
         self.accepted = None
 
     # -- building the workspace ------------------------------------------------
+    def stamp(self):
+        return f"2026-10-{min(28, 1 + next(self.clock) // 50):02d}T{next(self.clock) % 24:02d}:00:00.000Z"
 
     def add_page(self, id, title, *, parent=None, properties=None, blocks=(), edited=None, url=None, created=None):
         props = properties or {"title": {"id": "title", "type": "title", "title": rich(title)}}
@@ -92,6 +95,16 @@ class FakeNotion:
                                                 "database_id": self.sources[ds_id]["parent"]["database_id"]},
                              properties=properties, blocks=blocks, edited=edited, created=created)
 
+    def edit(self, page_id, *, edited, blocks=None, properties=None, trash=None):
+        page = self.pages[page_id]
+        page["last_edited_time"] = edited
+        if blocks is not None:
+            self.set_blocks(page_id, blocks)
+        if properties:
+            page["properties"].update(deepcopy(properties))
+        if trash is not None:
+            page["in_trash"] = trash
+
     def fail(self, method, path_pattern, response, times=1):
         """The next `times` matching requests get `response` (an httpx.Response, or an exception instance)."""
         self.faults.append([method, re.compile(path_pattern), response, times])
@@ -119,6 +132,8 @@ class FakeNotion:
                 if isinstance(response, Exception):
                     raise response
                 return response
+        if request.url.host != "api.notion.com":
+            return self.file(request)
         try:
             return httpx.Response(200, json=self.answer(request.method, path, body, dict(request.url.params)))
         except LookupError:
@@ -127,6 +142,12 @@ class FakeNotion:
         except ValueError as error:
             return httpx.Response(400, json={"object": "error", "status": 400, "code": "validation_error",
                                              "message": str(error)})
+
+    def file(self, request):
+        data = self.files.get(str(request.url))
+        if data is None:
+            return httpx.Response(403, content=b"expired")
+        return httpx.Response(200, content=data)
 
     def _page_list(self, items, params, body):
         size = int(params.get("page_size") or body.get("page_size") or 100)
@@ -158,12 +179,50 @@ class FakeNotion:
                 raise LookupError
             if method == "GET":
                 return page
+            if method == "PATCH":
+                for name, value in body.get("properties", {}).items():
+                    kind = page["properties"][name]["type"]
+                    page["properties"][name] = {"id": page["properties"][name].get("id", name), "type": kind,
+                                                **_stored_value(kind, value)}
+                page["last_edited_time"] = self.stamp()
+                return page
         if parts[0] == "pages" and len(parts) == 4 and parts[2] == "properties":
             page = self.pages[parts[1]]
             prop = next(p for p in page["properties"].values() if p.get("id") == parts[3])
             items = [{"object": "property_item", "type": prop["type"],
                       prop["type"]: item} for item in prop.get("_all", prop.get(prop["type"]) or [])]
             return {**self._page_list(items, params, body), "property_item": {"type": prop["type"]}}
+        if (method, path) == ("POST", "pages"):
+            parent = body["parent"]
+            new_id = uid(next(self.ids))
+            if parent.get("data_source_id"):
+                ds = self.sources.get(parent["data_source_id"])
+                if ds is None:
+                    raise LookupError
+                properties = {}
+                for name, column in ds["properties"].items():
+                    if name in body["properties"]:
+                        properties[name] = {"id": column["id"], "type": column["type"],
+                                            **_stored_value(column["type"], body["properties"][name])}
+                unknown = set(body["properties"]) - set(ds["properties"])
+                if unknown:
+                    raise ValueError(f"{unknown} is not a property that exists")
+                page = self.add_page(new_id, "", parent={"type": "data_source_id", "data_source_id": ds["id"],
+                                                          "database_id": ds["parent"]["database_id"]},
+                                     properties=properties, blocks=_from_request(body.get("children", [])),
+                                     edited=self.stamp())
+            else:
+                if parent.get("page_id") not in self.pages:
+                    raise LookupError
+                title = plain(body["properties"]["title"]["title"])
+                page = self.add_page(new_id, title, parent={"type": "page_id", "page_id": parent["page_id"]},
+                                     blocks=_from_request(body.get("children", [])), edited=self.stamp())
+                self.blocks.setdefault(parent["page_id"], []).append(
+                    {"object": "block", "id": new_id, "type": "child_page", "has_children": False,
+                     "child_page": {"title": title}})
+            if len(body.get("children", [])) > 100:
+                raise ValueError("body.children.length should be ≤ 100")
+            return page
         if parts[0] == "blocks" and len(parts) == 2 and method == "GET":
             for blocks in self.blocks.values():
                 for block in blocks:
@@ -175,6 +234,19 @@ class FakeNotion:
                 raise LookupError
             if method == "GET":
                 return self._page_list(self.blocks[parts[1]], params, body)
+            if method == "PATCH":
+                if len(body["children"]) > 100:
+                    raise ValueError("body.children.length should be ≤ 100")
+                if len(self.requests[-1].content) > 500_000:
+                    raise ValueError("request body too large")
+                added = _from_request(body["children"])
+                for block in added:
+                    block.setdefault("id", uid(next(self.ids)))
+                    block.update(object="block", has_children=False)
+                self.blocks[parts[1]].extend(added)
+                if parts[1] in self.pages:
+                    self.pages[parts[1]]["last_edited_time"] = self.stamp()
+                return {"object": "list", "results": added}
         if parts[0] == "databases" and method == "GET":
             found = self.databases.get(parts[1])
             if found is None and parts[1] in self.pages:
@@ -210,6 +282,24 @@ def plain(rich_text):
 
 def title_of(page):
     return next((plain(p["title"]) for p in page["properties"].values() if p.get("type") == "title"), "")
+
+
+def _stored_value(kind, value):
+    """A request's property value as Notion would store and return it."""
+    inner = value.get(kind) if isinstance(value, dict) else value
+    if kind in ("title", "rich_text"):
+        return {kind: [{"type": "text", "plain_text": i["text"]["content"], "text": i["text"]} for i in inner or []]}
+    return {kind: inner}
+
+
+def _from_request(children):
+    out = []
+    for block in deepcopy(children):
+        kind = block["type"]
+        for item in (block.get(kind) or {}).get("rich_text", []):
+            item["plain_text"] = item["text"]["content"]
+        out.append(block)
+    return out
 
 
 def _flat(prop):
