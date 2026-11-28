@@ -3,6 +3,7 @@
 import json
 import re
 import shlex
+import subprocess
 import sys
 from pathlib import Path
 from typing import List, Optional
@@ -13,6 +14,50 @@ from ...rem.files import MAP_DAYS
 from . import rem_look
 from .rem_help import show, verbatim
 from .rem_output import render
+
+
+def _upgrade_schedule_state(config, install, job):
+    """Describe eligibility separately from the presence of scheduler files."""
+    if not config.get("enabled"):
+        reason = "disabled"
+    elif config.get("channel") == "pinned" or config.get("pinned_version"):
+        reason = "pinned"
+    elif not install.get("supported"):
+        reason = "unsupported install"
+    elif job.get("scheduler") == "none":
+        reason = "unsupported scheduler"
+    elif not job.get("installed"):
+        reason = "scheduler not installed"
+    elif job.get("loaded") is True:
+        return {"effective": True, "reason": "scheduler active"}
+    elif job.get("loaded") is None:
+        return {"effective": "unknown", "reason": "scheduler installed (loading not verified)"}
+    else:
+        reason = "scheduler not loaded"
+    return {"effective": False, "reason": reason}
+
+
+def _reconcile_upgrade_scheduler():
+    """Install the independent upgrade job when an eligible reader has none."""
+    from ...rem import auto_upgrade
+    from ...rem.files import RemError
+
+    config = auto_upgrade.read_upgrade_config()
+    install = auto_upgrade.detect_install_method()
+    scheduler = auto_upgrade.DailyUpgradeScheduler()
+    state = _upgrade_schedule_state(config, install, scheduler.describe())
+    if state["reason"] not in ("scheduler not installed", "scheduler not loaded"):
+        return
+    try:
+        hour, minute = map(int, config["time"].split(":"))
+        scheduler.install(hour=hour, minute=minute)
+    except (RemError, OSError, ValueError, subprocess.SubprocessError) as error:
+        # Installation may have written files before the service manager rejected it.
+        try:
+            scheduler.uninstall()
+        except (RemError, OSError, subprocess.SubprocessError) as cleanup_error:
+            rem_look.line(f"Could not clean up the upgrade scheduler: {cleanup_error}", err=True)
+        rem_look.line(f"Could not install the auto-upgrade scheduler: {error}. Run co rem upgrade enable to retry.", err=True)
 
 
 def _next(ctx, arguments):
@@ -1985,6 +2030,8 @@ def make_rem_app(factory):
             identity = (address.load(selected_identity_dir())
                         if ctx.obj["default_root"] and root.is_dir() else None)
             owner = identity and identity["address"]
+            if ctx.obj["default_root"] and root.is_dir() and launch and not morning and not local:
+                _reconcile_upgrade_scheduler()
             # A first render, with no saved page to show, says how it is going (stderr).
             if morning:
                 result = reader.open_morning(root, owner, launch=launch)
@@ -2014,21 +2061,27 @@ def make_rem_app(factory):
             if action not in ("status", "run", "enable", "disable", "morning"):
                 raise RemError("Action must be status, run, enable, disable or morning")
             if action == "status":
+                install = auto_upgrade.detect_install_method()
+                config = auto_upgrade.read_upgrade_config()
+                job = auto_upgrade.DailyUpgradeScheduler().describe()
                 return {
-                    "install": auto_upgrade.detect_install_method(),
-                    "config": auto_upgrade.read_upgrade_config(),
+                    "install": install,
+                    "config": config,
                     "last": auto_upgrade.read_upgrade_state(),
-                    "upgrade_job": auto_upgrade.DailyUpgradeScheduler().describe(),
+                    "upgrade_job": job,
+                    "effective_state": _upgrade_schedule_state(config, install, job),
                     "morning_job": auto_upgrade.MorningReaderScheduler().describe(),
                 }, ["upgrade", "run", "--dry-run"]
             if action == "run":
-                result = auto_upgrade.run_atomic_upgrade(root=root, dry_run=dry_run)
-                failed = result.get("outcome") == "failed" and not scheduled
+                result = auto_upgrade.run_atomic_upgrade(root=root, dry_run=dry_run, scheduled=scheduled)
+                failed = result.get("outcome") == "failed"
                 return result, ["status"], failed
             if action == "enable":
                 cfg = auto_upgrade.read_upgrade_config()
                 if channel:
                     cfg["channel"] = channel
+                    if channel != "pinned":
+                        cfg["pinned_version"] = None
                 if pin:
                     cfg["channel"] = "pinned"
                     cfg["pinned_version"] = pin
@@ -2036,8 +2089,13 @@ def make_rem_app(factory):
                     cfg["time"] = at
                 cfg["enabled"] = True
                 saved = auto_upgrade.write_upgrade_config(cfg)
+                install = auto_upgrade.detect_install_method()
+                scheduler = auto_upgrade.DailyUpgradeScheduler()
+                state = _upgrade_schedule_state(saved, install, scheduler.describe())
+                if state["reason"] in ("pinned", "unsupported install", "unsupported scheduler"):
+                    return {"config": saved, "effective_state": state}, ["upgrade", "status"]
                 hour, minute = map(int, saved["time"].split(":"))
-                job = auto_upgrade.DailyUpgradeScheduler().install(hour=hour, minute=minute)
+                job = scheduler.install(hour=hour, minute=minute)
                 return {"config": saved, "job": job}, ["upgrade", "status"]
             if action == "disable":
                 cfg = auto_upgrade.read_upgrade_config()

@@ -1236,6 +1236,9 @@ def _first_page(root: Path, name: str, version: list, say) -> str:
             with _building(root) as mine:
                 if mine:
                     if (text := _read_page(root, name)) is None:
+                        from .store import prepare_reader_index
+                        if prepare_reader_index(root):
+                            version = reader_version(root)
                         together = [build]
                         as_of = datetime.now(timezone.utc).isoformat(timespec="seconds")  # one time for the set
                         _publish(root, {b: _render(root, b, as_of) for b in together}, version)

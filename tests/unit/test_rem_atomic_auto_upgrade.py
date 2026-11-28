@@ -119,8 +119,10 @@ def test_successful_atomic_upgrade_stages_verifies_swaps_and_prewarms_html(tmp_p
     monkeypatch.setattr(auto_upgrade, "current_version", lambda: "1.9.7rc31")
     monkeypatch.setattr(auto_upgrade, "find_uv", lambda: "/usr/bin/uv")
 
+    monkeypatch.setenv("UV_INDEX", "https://alternate.invalid/simple")
+    monkeypatch.setenv("UV_FIND_LINKS", "/alternate/wheels")
     prewarmed = []
-    monkeypatch.setattr(auto_upgrade, "prewarm_reader", lambda root, python_bin: prewarmed.append((root, python_bin)) or True)
+    monkeypatch.setattr(auto_upgrade, "prewarm_reader", lambda root, python_bin, **kw: prewarmed.append((root, python_bin)) or "ready")
 
     commands = []
 
@@ -151,6 +153,13 @@ def test_successful_atomic_upgrade_stages_verifies_swaps_and_prewarms_html(tmp_p
     # First uv tool install targeted a staging dir, NOT the live uv_tools dir.
     first_uv_env = next(env for cmd, env in commands if cmd[:3] == ["/usr/bin/uv", "tool", "install"])
     assert Path(first_uv_env["UV_TOOL_DIR"]) != uv_tools
+    for cmd, env in commands:
+        if cmd[:3] == ["/usr/bin/uv", "tool", "install"]:
+            assert "--no-config" in cmd
+            assert cmd[cmd.index("--default-index") + 1] == "https://pypi.org/simple"
+            assert cmd[-1] == "connectonion==1.9.7rc32"
+            assert "UV_INDEX" not in env and "UV_FIND_LINKS" not in env
+
 
 
 def test_atomic_upgrade_respects_pin_and_active_rem_lock(tmp_path, monkeypatch):
@@ -223,3 +232,61 @@ def test_daily_upgrade_and_morning_schedulers_are_independent_idempotent_and_res
     assert minfo["installed"] is True
     assert minfo["time"] == "08:45"
     assert morning.uninstall() is True
+
+
+def test_installed_reader_failure_is_reported_and_retried_without_reinstall(tmp_path, monkeypatch):
+    root = tmp_path / ".co" / "rem"
+    root.mkdir(parents=True)
+    (root / "config.yaml").touch()
+    monkeypatch.setattr(auto_upgrade, "detect_install_method", lambda: {
+        "supported": True, "uv_tool_dir": str(tmp_path / "tools"),
+    })
+    monkeypatch.setattr(auto_upgrade, "current_version", lambda: "1.9.7rc33")
+    previous = auto_upgrade._upgrade_result("1.9.7rc32", "1.9.7rc33", "preview", root)
+    auto_upgrade.write_upgrade_state({**previous, "phase": "reader"}, tmp_path)
+    fetch = lambda url: {"releases": {"1.9.7rc33": [{"yanked": False}]}}
+
+    def worker(cmd, **kwargs):
+        assert cmd[1:3] == ["-I", "-c"]
+        assert cmd[-2:] == [str(root), str(root.parent)]
+        return CompletedProcess(cmd, 1, "", "sqlite error: cannot rebuild index")
+
+    failed = auto_upgrade.run_atomic_upgrade(home=tmp_path, run=worker, fetch=fetch)
+    assert failed["outcome"] == "failed" and failed["phase"] == "reader"
+    assert "cannot rebuild index" in failed["error"]
+    assert auto_upgrade.read_upgrade_state(tmp_path) == failed
+
+    ready = auto_upgrade.run_atomic_upgrade(home=tmp_path, fetch=fetch,
+        run=lambda cmd, **kw: CompletedProcess(cmd, 0, "restarted\n", ""))
+    assert ready["outcome"] == "upgraded" and ready["reader"] == "restarted"
+
+
+def test_scheduled_upgrade_obeys_opt_out_before_network_or_install(tmp_path, monkeypatch):
+    monkeypatch.setattr(auto_upgrade, "current_version", lambda: "1.9.7rc33")
+    monkeypatch.setattr(auto_upgrade, "detect_install_method", lambda: pytest.fail("probed installation"))
+    auto_upgrade.write_upgrade_config({**auto_upgrade.default_upgrade_config(), "enabled": False}, tmp_path)
+    assert auto_upgrade.run_atomic_upgrade(home=tmp_path, scheduled=True)["outcome"] == "disabled"
+
+
+def test_prewarm_considers_host_only_after_successful_reader_preparation(tmp_path, monkeypatch):
+    from connectonion.rem import live_host, reader
+
+    monkeypatch.setattr(live_host, "renew_idle", lambda **kw: pytest.fail("restarted during reader preparation"))
+    monkeypatch.setattr(reader, "refresh", lambda root: False)
+    assert auto_upgrade._prewarm_installed_reader(tmp_path, tmp_path) == "build_busy"
+
+    def fail_refresh(root):
+        raise auto_upgrade.RemError("index migration failed")
+
+    monkeypatch.setattr(reader, "refresh", fail_refresh)
+    with pytest.raises(auto_upgrade.RemError, match="index migration failed"):
+        auto_upgrade._prewarm_installed_reader(tmp_path, tmp_path)
+
+
+def test_nightly_waits_for_the_active_notebook_turn(tmp_path, monkeypatch):
+    active = iter((True, True, False))
+    sleeps = []
+    monkeypatch.setattr(auto_upgrade, "rem_turn_active", lambda root: next(active))
+    monkeypatch.setattr(auto_upgrade.time, "sleep", sleeps.append)
+    assert auto_upgrade._wait_for_idle_notebook(tmp_path, scheduled=True)
+    assert sleeps == [5, 5]

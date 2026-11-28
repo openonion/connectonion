@@ -712,3 +712,34 @@ def test_an_agent_open_never_moves_the_host_and_a_busy_host_is_left_alone(startu
     monkeypatch.setattr(live_host, "launch_session", lambda: "Aqua")
     monkeypatch.setattr(live_host, "_busy", lambda directory: True)
     assert live_host.ensure_online("owner") is None  # unfinished work keeps the Host where it is
+
+
+def test_manual_open_waits_for_the_installed_reader_build(startup, monkeypatch):
+    root = startup / "rem"
+    root.mkdir()
+    (root / "config.yaml").touch()
+    queued = []
+    monkeypatch.setattr(live_host, "_upgrade", lambda *a, **k: live_host.REPLACE)
+    monkeypatch.setattr(reader, "owner_changed", lambda path: queued.append(path) or True)
+    monkeypatch.setattr(live_host, "_renew", lambda *a, **k: pytest.fail("restarted before reader preparation"))
+    result = live_host.ensure_online("owner")
+    assert isinstance(result, live_host.Notice)
+    assert queued == [root]
+
+
+def test_scheduled_handoff_waits_for_approval_and_verifies_same_port(startup, monkeypatch):
+    decisions = iter((live_host.BUSY, live_host.REPLACE, live_host.REPLACE))
+    restarted = []
+    write_json(startup / "rem-live-host.json", {"address": "owner", "pid": 12, "port": 18765})
+    monkeypatch.setattr(live_host, "_upgrade", lambda *a, **k: next(decisions))
+
+    def renew(directory, saved, address, **kwargs):
+        restarted.append(saved["port"])
+        return SimpleNamespace(pid=13, args=["co", "ai", "--port", "18765"])
+
+    monkeypatch.setattr(live_host, "_renew", renew)
+    monkeypatch.setattr(live_host, "answers", lambda port, address: port == 18765 and address == "owner")
+    assert live_host.renew_idle(directory=startup) == "busy"
+    assert restarted == []
+    assert live_host.renew_idle(directory=startup) == "restarted"
+    assert restarted == [18765]

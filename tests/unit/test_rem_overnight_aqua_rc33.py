@@ -399,7 +399,7 @@ def test_renew_idle_restarts_host_inside_aqua_via_launch_agent(tmp_path, monkeyp
     assert saved["renewed_for"] == live_host.version_on_disk()
 
 
-def test_auto_upgrade_refreshes_plist_and_kickstarts_rem_host_on_macos(tmp_path, monkeypatch):
+def test_auto_upgrade_leaves_busy_aqua_host_running(tmp_path, monkeypatch):
     home = tmp_path / "home"
     co_dir = home / ".co"
     rem_root = co_dir / "rem"
@@ -422,7 +422,7 @@ def test_auto_upgrade_refreshes_plist_and_kickstarts_rem_host_on_macos(tmp_path,
     })
     monkeypatch.setattr(auto_upgrade, "current_version", lambda: "1.9.7rc32")
     monkeypatch.setattr(auto_upgrade, "find_uv", lambda: "/usr/bin/uv")
-    monkeypatch.setattr(auto_upgrade, "prewarm_reader", lambda root, py: True)
+    monkeypatch.setattr(auto_upgrade, "prewarm_reader", lambda root, py, **kw: "busy")
     monkeypatch.setattr(auto_upgrade.sys, "platform", "darwin")
 
     launchctl_calls: list[list[str]] = []
@@ -451,16 +451,11 @@ def test_auto_upgrade_refreshes_plist_and_kickstarts_rem_host_on_macos(tmp_path,
         fetch=lambda url: {"releases": {"1.9.7rc33": [{"yanked": False}]}},
     )
     assert result["outcome"] == "upgraded"
-    assert result["host_agent_restarted"] is True
-
-    refreshed_plist = plistlib.loads(plist_path.read_bytes())
-    assert refreshed_plist["ProgramArguments"][0] == str(uv_tools / "connectonion" / "bin" / "python")
-    assert refreshed_plist["LimitLoadToSessionType"] == "Aqua"
-    assert any(cmd[:3] == ["launchctl", "kickstart", "-k"] and cmd[3].endswith("/ai.openonion.rem-host") for cmd in launchctl_calls)
-
-    saved = live_host.read_json(co_dir / "rem-live-host.json", {})
-    assert saved["session"] == "Aqua"
-    assert saved["pid"] == 8888
+    assert result["reader"] == "busy"
+    assert result["prewarmed"] is True
+    assert launchctl_calls == []
+    assert plistlib.loads(plist_path.read_bytes())["ProgramArguments"] == ["/old/python"]
+    assert live_host.read_json(co_dir / "rem-live-host.json", {})["pid"] == 111
 
 
 def test_host_session_info_reports_aqua_background_and_non_macos(tmp_path, monkeypatch):
