@@ -400,7 +400,12 @@ Stable remains 1.8.3; this does not authorize final 1.8.4 or cloud provisioning.
 See [1.8.4a2 notes](docs/releases/1.8.4a2.md) and the
 [local acceptance record](docs/acceptance/1.8.4-live-followup/README.md).
 
-## Current Version: 1.9.7rc33
+## Current Version: 1.9.7rc34
+Release candidate 1.9.7rc34 fixes the unattended REM upgrade and reader handoff on macOS (#3483), and labels the full-screen writer in Today's task draft drawer (#3484). Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc34.md).
+
+- 1.9.7rc34 (Nightly REM upgrades rebuild an incompatible reader index, preserve the usable page if preparation fails, and switch the reader on its existing URL once idle, #3483. Today's task draft drawer shows Write full screen, #3484).
+
+### Previous candidate: 1.9.7rc33
 Release candidate 1.9.7rc33 closes server-side shared-snapshot privacy leaks (#3435 P0, #3436, #3417, #3387) and isolates non-default notebooks from HOME's WeChat keys (#3375), adds visible localized `Write full screen` / `全屏写` actions on Today reply cards (#3479), fixes phone knowledge graph priority node labels, middle-truncation, tap-to-inspect, and accessible mini-graph links (#3390 / #3466), fixes data truthfulness across elapsed appointments (#3439), Memory changes (#3438), organisation member counts (#3437), and unified translation counts + Keys loading state (#3364), upgrades the opt-in `overnight` schedule to the 10-wave `22:00`–`02:30` cadence with `03:00` cutoff and late-wave task gating (#3480), keeps macOS REM live Hosts inside the owner's `Aqua` GUI session via `gui/$UID` LaunchAgent across upgrades (#3317), and ships Notion markdown/list improvements (#3452). Stable remains 1.9.6. See [candidate notes](docs/releases/1.9.7rc33.md).
 
 - 1.9.7rc33 (Server-side shared-snapshot privacy redaction #3435/#3436/#3417/#3387/#3375; visible Today `Write full screen` #3479; phone KG labels #3390/#3466; data truthfulness #3439/#3438/#3437/#3364; 10-wave 03:00 overnight profile #3480; macOS Aqua LaunchAgent Host #3317; Notion `page --md` #3452).
