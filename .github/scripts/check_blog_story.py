@@ -9,6 +9,8 @@ import sys
 import time
 from pathlib import Path
 
+from openai import RateLimitError
+
 from connectonion import llm_do
 from connectonion.core.exceptions import InsufficientCreditsError, ProviderServiceError
 
@@ -45,7 +47,7 @@ def _judge(text: str, attempts: int = 3) -> str | None:
             print("::warning::blog story model has insufficient credits; the story check did not run. "
                   "The post shipped and still needs a human read.")
             return None
-        except ProviderServiceError as exc:
+        except (ProviderServiceError, RateLimitError) as exc:
             if attempt == attempts - 1:
                 print(f"::warning::could not reach the model to judge this post ({exc.__class__.__name__}); "
                       "the story check did not run. The post shipped and still needs a human read.")

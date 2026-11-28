@@ -14,7 +14,9 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import httpx
 import pytest
+from openai import RateLimitError
 
 from connectonion.core.exceptions import ProviderServiceError
 
@@ -29,7 +31,13 @@ def _overload() -> Exception:
         'experiencing high demand.", "status": "UNAVAILABLE"}}'
     )
     error.status_code = 503
-    return error
+    return ProviderServiceError(error)
+
+
+def _rate_limit() -> RateLimitError:
+    """The raw SDK exception raised when the provider reaches its spending cap."""
+    response = httpx.Response(429, request=httpx.Request("POST", "https://example.invalid/chat/completions"))
+    return RateLimitError("Project spending cap exceeded", response=response, body=None)
 
 
 @pytest.fixture
@@ -64,29 +72,32 @@ def test_a_changelog_wearing_prose_fails(gate, post, monkeypatch):
     assert gate.main() == 1
 
 
-def test_an_unreachable_model_does_not_fail_the_post(gate, post, monkeypatch, capsys):
-    """The 503 case. Retried, then reported as unchecked — not as bad."""
+@pytest.mark.parametrize("provider_error", [_overload, _rate_limit])
+def test_an_unreachable_model_does_not_fail_the_post(gate, post, monkeypatch, capsys, provider_error):
     calls = []
+    delays = []
+    monkeypatch.setattr(gate.time, "sleep", delays.append)
 
     def overloaded(*args, **kwargs):
         calls.append(1)
-        raise ProviderServiceError(_overload())
+        raise provider_error()
 
     monkeypatch.setattr(gate, "llm_do", overloaded)
     monkeypatch.setattr(gate.sys, "argv", ["check_blog_story.py", str(post)])
 
     assert gate.main() == 0, "a provider outage must not read as a failing post"
     assert len(calls) == 3, "the outage should be retried before giving up"
+    assert delays == [5, 10]
     out = capsys.readouterr().out
-    assert "::warning::" in out
-    assert "did not run" in out
+    assert out.count("::warning::") == 1
+    assert "did not run" in out and "human read" in out
     assert "::error::" not in out, "an unchecked post must not look like a rejected one"
 
 
-def test_a_transient_outage_still_gets_judged(gate, post, monkeypatch):
-    """One 503 then an answer: the verdict is the answer, not the outage."""
+@pytest.mark.parametrize("provider_error", [_overload, _rate_limit])
+def test_a_transient_outage_still_gets_judged(gate, post, monkeypatch, provider_error):
     answers = iter([
-        ProviderServiceError(_overload()),
+        provider_error(),
         "NOT_STORY: it is a commit list",
     ])
 
