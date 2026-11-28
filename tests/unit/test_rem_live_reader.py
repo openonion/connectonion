@@ -893,3 +893,54 @@ def test_a_half_written_upgrade_under_the_build_is_one_line_not_a_failed_build(h
     reader.main([str(host.root), "live"])
     assert reader.saved(host.root, "live") and reader.failure(host.root) is None
     assert "was not replaced" in capsys.readouterr().out.strip().splitlines()[-1]
+
+
+def test_manual_builder_rebuilds_incompatible_index_before_render(host, cache, monkeypatch):
+    import sqlite3
+    from connectonion.rem import store
+    from connectonion.rem.files import maintenance_lock
+
+    root = host.root
+    with maintenance_lock(root):
+        store.refresh(root)
+    with sqlite3.connect(store.db_path(root)) as db:
+        db.execute("update meta set value = 'old' where key = 'schema_version'")
+    rendered = []
+    original_refresh = store.refresh
+
+    def rebuild_locked(root):
+        from connectonion.rem.files import RemError
+        with pytest.raises(RemError, match="busy"):
+            with maintenance_lock(root):
+                pass
+        return original_refresh(root)
+
+    monkeypatch.setattr(store, "refresh", rebuild_locked)
+
+    def render(root, build, as_of):
+        assert store.query_records(root)["total"] >= 1
+        rendered.append(build)
+        return ({"live.html" if build == "live" else "data.json": build}, as_of, 0)
+
+    monkeypatch.setattr(reader, "_render", render)
+    assert reader.refresh(root, ("live", "full"))
+    assert rendered == ["live", "full"]
+    assert reader.cached_page(root, "live.html")[0] == "live"
+
+
+def test_manual_builder_keeps_saved_cache_when_index_preparation_fails(host, cache, monkeypatch):
+    import sqlite3
+    from connectonion.rem import store
+    from connectonion.rem.files import maintenance_lock
+
+    root = host.root
+    monkeypatch.setattr(reader, "_render", lambda root, build, as_of: ({"live.html": "old page"}, as_of, 0))
+    assert reader.refresh(root, ("live",))
+    with maintenance_lock(root):
+        store.refresh(root)
+    with sqlite3.connect(store.db_path(root)) as db:
+        db.execute("update meta set value = 'old' where key = 'schema_version'")
+    monkeypatch.setattr(store, "refresh", Mock(side_effect=ValueError("preparation failed")))
+    with pytest.raises(ValueError, match="preparation failed"):
+        reader.refresh(root, ("live",))
+    assert reader._read_page(root, "live.html") == "old page"

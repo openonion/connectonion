@@ -1081,6 +1081,8 @@ def _refresh_once(root: Path, builds):
     with _building(root) as mine:
         if not mine:
             return None
+        from .store import prepare_reader_index
+        index_rebuilt = prepare_reader_index(root)
         pending = _pending_builds(root)
         wanted = [build for build in ("live", "full", "file") if build in builds or build in pending]
         for build in pending:
@@ -1088,7 +1090,8 @@ def _refresh_once(root: Path, builds):
         for _ in range(3):
             started, version = _now(), reader_version(root)
             rows = {build: saved(root, build) for build in wanted}
-            stale = [build for build in wanted if _behind(rows[build], version, started)]
+            stale = [build for build in wanted if index_rebuilt or _behind(rows[build], version, started)]
+            index_rebuilt = False
             tree = None
             if any(_unchecked(rows[build], started) for build in wanted if build not in stale):
                 tree = tree_version(root)
